@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libzip-dev \
     libicu-dev \
+    libonig-dev \
+    libcurl4-openssl-dev \
     zip \
     unzip \
     git \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql gd bcmath zip intl opcache
+    && docker-php-ext-install pdo_mysql gd bcmath zip intl opcache mbstring xml curl
 
 # Включение модуля Apache Rewrite
 RUN a2enmod rewrite
@@ -29,7 +31,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY . /var/www/html
 
 # Установка зависимостей Laravel
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 # Настройка прав доступа
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
