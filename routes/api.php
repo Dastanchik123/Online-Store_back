@@ -46,23 +46,6 @@ Route::get('/banners', [BannerController::class, 'index']);
 
 Route::get('/orders/track/{orderNumber}', [OrderController::class, 'trackByNumber']);
 
-Route::get('/init-db', function () {
-    try {
-        \Illuminate\Support\Facades\Artisan::call('migrate:fresh', [
-            '--force' => true,
-            '--seed'  => true,
-        ]);
-        return response()->json([
-            'message' => 'Database initialized successfully!',
-            'output'  => \Illuminate\Support\Facades\Artisan::output(),
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => $e->getMessage(),
-        ], 500);
-    }
-});
-
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
