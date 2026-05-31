@@ -9,8 +9,3 @@ Route::get('/', function () {
 Route::get('/healthz', function () {
     return response()->json(['status' => 'ok']);
 });
-
-Route::get('/init-db', function () {
-    \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--seed' => true, '--force' => true]);
-    return 'Database initialized!';
-});
