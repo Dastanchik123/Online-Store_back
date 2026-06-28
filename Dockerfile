@@ -12,7 +12,7 @@ WORKDIR /var/www/html
 
 COPY . .
 
-RUN APP_ENV=production DB_CONNECTION=sqlite composer install --no-interaction --optimize-autoloader --no-dev
+RUN COMPOSER_ALLOW_SUPERUSER=1 composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
 
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
