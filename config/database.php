@@ -4,11 +4,11 @@ use Illuminate\Support\Str;
 
 return [
 
-    
+
 
     'default' => env('DB_CONNECTION', 'mysql'),
 
-    
+
 
     'connections' => [
 
@@ -42,6 +42,7 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
+            'sslmode' => env('DB_SSLMODE', 'require'),
             'url' => env('DATABASE_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
@@ -52,7 +53,6 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'schema' => 'public',
-            'sslmode' => 'prefer',
         ],
 
         'sqlsrv' => [
@@ -70,11 +70,11 @@ return [
 
     ],
 
-    
+
 
     'migrations' => 'migrations',
 
-    
+
 
     'redis' => [
 
@@ -82,7 +82,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),
+            'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_') . '_database_'),
         ],
 
         'default' => [
