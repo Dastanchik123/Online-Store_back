@@ -1,27 +1,38 @@
-app = "your-laravel-api-name"
-primary_region = "fra" # Франкфурт (или другой регион поближе к Neon)
+# fly.toml app configuration file generated for online-store-back on 2026-06-28T19:27:09Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'online-store-back'
+primary_region = 'fra'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  APP_ENV = "production"
-  LOG_CHANNEL = "stderr" # ВАЖНО: для сбора логов в консоль Fly
+  APP_ENV = 'production'
+  LOG_CHANNEL = 'stderr'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["app"]
+  processes = ['app']
 
-[http_service.concurrency]
-  type = "requests"
-  hard_limit = 250
-  soft_limit = 200
+  [http_service.concurrency]
+    type = 'requests'
+    hard_limit = 250
+    soft_limit = 200
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
 
 [[statics]]
-  guest_path = "/var/www/html/public"
-  url_prefix = "/"
+  guest_path = '/var/www/html/public'
+  url_prefix = '/'
