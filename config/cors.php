@@ -6,6 +6,7 @@ return [
     'allowed_origins' => [
         'http://192.168.2.176:3000',
         'http://localhost:3000',
+        'https://kurulush-store.vercel.app',
         env('CORS_ALLOWED_ORIGINS', '*'),
     ],
     'allowed_origins_patterns' => [],
