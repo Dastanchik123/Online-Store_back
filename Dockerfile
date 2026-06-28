@@ -1,5 +1,5 @@
 # Используем официальный образ PHP-FPM
-FROM php:8.2-fpm
+FROM php:8.3-fpm
 
 # Установка системных зависимостей и Nginx
 RUN apt-get update && apt-get install -y \
