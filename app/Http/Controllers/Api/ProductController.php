@@ -2,7 +2,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Product;
+use App\Services\AiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -87,7 +89,7 @@ class ProductController extends Controller
             'purchase_price'    => 'nullable|numeric|min:0',
             'price'             => 'required|numeric|min:0',
             'sale_price'        => 'nullable|numeric|min:0',
-            'stock_quantity'    => 'integer|min:0',
+            'stock_quantity'    => 'nullable|integer|min:0',
             'in_stock'          => 'boolean',
             'is_active'         => 'boolean',
             'is_hot'            => 'boolean',
@@ -106,7 +108,13 @@ class ProductController extends Controller
         ]);
 
         if (empty($validated['slug'])) {
-            $validated['slug'] = Str::slug($validated['name']);
+            $baseSlug = Str::slug($validated['name']);
+            $slug     = $baseSlug;
+            $counter  = 1;
+            while (Product::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter++;
+            }
+            $validated['slug'] = $slug;
         }
 
         if ($request->hasFile('image')) {
@@ -120,15 +128,32 @@ class ProductController extends Controller
             $validated['image'] = $path;
         }
 
-        if ($request->hasFile('images')) {
+        if ($request->has('gallery_order')) {
+            $galleryPaths = [];
+            $newFiles = $request->file('gallery_files', []);
+            foreach ($request->input('gallery_order') as $item) {
+                if (str_starts_with($item, 'existing:')) {
+                    $galleryPaths[] = substr($item, 9);
+                } elseif (str_starts_with($item, 'new:')) {
+                    $idx = (int) substr($item, 4);
+                    if (isset($newFiles[$idx])) {
+                        $file = $newFiles[$idx];
+                        $filename = 'image_' . time() . '_' . Str::random(6) . '_' . $idx . '.webp';
+                        $path = 'products/gallery/' . $filename;
+                        $image = Image::make($file)->encode('webp', 90);
+                        Storage::disk('public')->put($path, (string) $image);
+                        $galleryPaths[] = $path;
+                    }
+                }
+            }
+            $validated['images'] = $galleryPaths;
+        } elseif ($request->hasFile('images')) {
             $galleryPaths = [];
             foreach ($request->file('images') as $key => $file) {
                 $filename = 'image_' . time() . '_' . Str::random(6) . '_' . ($key + 1) . '.webp';
                 $path     = 'products/gallery/' . $filename;
-
                 $image = Image::make($file)->encode('webp', 90);
                 Storage::disk('public')->put($path, (string) $image);
-
                 $galleryPaths[] = $path;
             }
             $validated['images'] = $galleryPaths;
@@ -173,7 +198,13 @@ class ProductController extends Controller
         ]);
 
         if (isset($validated['name']) && empty($validated['slug'])) {
-            $validated['slug'] = \Illuminate\Support\Str::slug($validated['name']);
+            $baseSlug = Str::slug($validated['name']);
+            $slug     = $baseSlug;
+            $counter  = 1;
+            while (Product::where('slug', $slug)->where('id', '!=', $product->id)->exists()) {
+                $slug = $baseSlug . '-' . $counter++;
+            }
+            $validated['slug'] = $slug;
         }
 
         if ($request->hasFile('image')) {
@@ -187,15 +218,34 @@ class ProductController extends Controller
             $validated['image'] = $path;
         }
 
-        if ($request->hasFile('images')) {
+        if ($request->has('gallery_order')) {
+            $galleryPaths = [];
+            $newFiles = $request->file('gallery_files', []);
+            foreach ($request->input('gallery_order') as $item) {
+                if (str_starts_with($item, 'existing:')) {
+                    $galleryPaths[] = substr($item, 9);
+                } elseif (str_starts_with($item, 'new:')) {
+                    $idx = (int) substr($item, 4);
+                    if (isset($newFiles[$idx])) {
+                        $file = $newFiles[$idx];
+                        $filename = 'image_' . time() . '_' . Str::random(6) . '_' . $idx . '.webp';
+                        $path = 'products/gallery/' . $filename;
+                        $image = Image::make($file)->encode('webp', 90);
+                        Storage::disk('public')->put($path, (string) $image);
+                        $galleryPaths[] = $path;
+                    }
+                }
+            }
+            $validated['images'] = $galleryPaths;
+        } elseif ($request->has('clear_gallery') && $request->boolean('clear_gallery')) {
+            $validated['images'] = null;
+        } elseif ($request->hasFile('images')) {
             $galleryPaths = [];
             foreach ($request->file('images') as $key => $file) {
                 $filename = 'image_' . time() . '_' . Str::random(6) . '_' . ($key + 1) . '.webp';
                 $path     = 'products/gallery/' . $filename;
-
                 $image = Image::make($file)->encode('webp', 90);
                 Storage::disk('public')->put($path, (string) $image);
-
                 $galleryPaths[] = $path;
             }
             $validated['images'] = $galleryPaths;
@@ -254,4 +304,22 @@ class ProductController extends Controller
 
         return response()->json(['sku' => $sku]);
     }
+
+    public function aiDescription(Request $request, AiService $aiService)
+    {
+        $request->validate([
+            'name' => 'required|string',
+            'category_id' => 'nullable|exists:categories,id'
+        ]);
+
+        $categoryName = null;
+        if ($request->category_id) {
+            $categoryName = Category::find($request->category_id)->name;
+        }
+
+        $description = $aiService->generateDescription($request->name, $categoryName);
+
+        return response()->json(['description' => $description]);
+    }
 }
+

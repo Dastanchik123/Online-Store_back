@@ -109,12 +109,26 @@ class PosController extends Controller
                 }
             }
 
-            $lastPosOrder = Order::where('notes', 'like', '%POS%')
-                ->where('order_number', 'REGEXP', '^[0-9]+$')
-                ->orderByRaw('CAST(order_number AS UNSIGNED) DESC')
+            $terminalPrefix = $request->get('terminal_id', 'k1'); // По умолчанию k1, если не передано
+
+            $lastPosOrder = Order::where('order_number', 'like', "{$terminalPrefix}-%")
+                ->orderByRaw('CAST(SUBSTRING(order_number FROM \'[0-9]+$\') AS INTEGER) DESC')
                 ->first();
 
-            $nextNumber = $lastPosOrder ? (int) $lastPosOrder->order_number + 1 : 1;
+            if (! $lastPosOrder) {
+                // Если нет заказов с префиксом, пробуем найти просто последний числовой POS заказ
+                $lastPosOrder = Order::where('notes', 'like', '%POS%')
+                    ->whereRaw('order_number ~ \'^[0-9]+$\'')
+                    ->orderByRaw('CAST(order_number AS INTEGER) DESC')
+                    ->first();
+                $nextNumber = $lastPosOrder ? (int) $lastPosOrder->order_number + 1 : 1;
+            } else {
+                // Извлекаем числовую часть из k1-123
+                preg_match('/-(\d+)$/', $lastPosOrder->order_number, $matches);
+                $nextNumber = isset($matches[1]) ? (int) $matches[1] + 1 : 1;
+            }
+
+            $orderNumber = "{$terminalPrefix}-{$nextNumber}";
 
             $orderTotal  = $totalAmount - ($request->discount ?? 0);
             $rawCash     = (float) $request->cash_amount;
@@ -124,7 +138,7 @@ class PosController extends Controller
             $storeCash     = min($rawCash, max(0, $orderTotal - $storeTransfer));
 
             $order = Order::create([
-                'order_number'      => (string) $nextNumber,
+                'order_number'      => $orderNumber,
                 'user_id'           => $request->user_id,
                 'staff_id'          => auth()->id(),
                 'subtotal'          => $totalAmount,
@@ -134,7 +148,7 @@ class PosController extends Controller
                 'payment_status'    => ($request->is_debt && $totalPaid < $orderTotal) ? 'pending' : 'paid',
                 'payment_method'    => $rawTransfer > 0 ? ($rawCash > 0 ? 'mixed' : 'card') : 'cash',
                 'currency'          => 'SOM',
-                'notes'             => 'Оффлайн продажа (POS)',
+                'notes'             => "Оффлайн продажа (POS - {$terminalPrefix})",
                 'is_financed'       => true,
                 'cash_received'     => $storeCash,
                 'transfer_received' => $storeTransfer,
@@ -212,10 +226,8 @@ class PosController extends Controller
                 }
             }
 
-            return response()->json([
-                'message'  => 'Продажа успешно оформлена',
-                'order_id' => $order->id,
-            ], 201);
+            $order->load(['items.product', 'user']);
+            return response()->json($order, 201);
         });
     }
 

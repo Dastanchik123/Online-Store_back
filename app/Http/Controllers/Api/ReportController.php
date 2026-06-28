@@ -315,7 +315,7 @@ class ReportController extends Controller
         $order->load(['items.product', 'user', 'staff']);
         $settings = $this->getReceiptSettings();
 
-        $pdf = Pdf::loadView('pdf.thermal_receipt', array_merge(['order' => $order], $settings));
+        $pdf = Pdf::loadView('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
         $pdf->setPaper([0, 0, 226.77, 600], 'portrait');
         return $pdf->stream("receipt_{$order->id}.pdf");
     }
@@ -331,7 +331,7 @@ class ReportController extends Controller
     {
         $order->load(['items.product', 'user', 'staff']);
         $settings = $this->getReceiptSettings();
-        return view('pdf.thermal_receipt', array_merge(['order' => $order], $settings));
+        return view('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
     }
 
     private function getReceiptSettings()

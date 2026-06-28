@@ -69,6 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/products/{product}', [ProductController::class, 'update']);
         Route::delete('/products/{product}', [ProductController::class, 'destroy']);
         Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
+        Route::post('/products/ai-description', [ProductController::class, 'aiDescription']);
+
 
         Route::post('/reviews/{review}/approve', [ReviewController::class, 'approve']);
 
@@ -180,4 +182,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('reports/order/{order}/html', [ReportController::class, 'orderHtml']);
     Route::get('reports/order/{order}/thermal', [ReportController::class, 'thermalReceipt']);
     Route::get('reports/order/{order}/thermal/html', [ReportController::class, 'thermalReceiptHtml']);
+
+    // Sync Routes for Offline POS
+    Route::prefix('sync')->group(function () {
+        Route::get('/pull', [\App\Http\Controllers\Api\SyncController::class, 'pull']);
+        Route::post('/push', [\App\Http\Controllers\Api\SyncController::class, 'push']);
+    });
 });

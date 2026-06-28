@@ -5,11 +5,14 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+use App\Traits\HasUuid;
+
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuid;
 
     protected $fillable = [
+        'uuid',
         'order_number',
         'user_id',
         'shipping_address_id',
@@ -18,6 +21,7 @@ class Order extends Model
         'payment_status',
         'payment_method',
         'subtotal',
+        'total_amount',
         'tax',
         'shipping_cost',
         'discount',
@@ -52,6 +56,14 @@ class Order extends Model
                 $order->order_number = 'ORD-' . strtoupper(Str::random(10));
             }
         });
+    }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if (is_numeric($value)) {
+            return $this->where('id', $value)->first();
+        }
+        return $this->where('uuid', $value)->first();
     }
 
     

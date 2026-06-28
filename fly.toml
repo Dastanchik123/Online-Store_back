@@ -1,0 +1,27 @@
+app = "your-laravel-api-name"
+primary_region = "fra" # Франкфурт (или другой регион поближе к Neon)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  APP_ENV = "production"
+  LOG_CHANNEL = "stderr" # ВАЖНО: для сбора логов в консоль Fly
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[http_service.concurrency]
+  type = "requests"
+  hard_limit = 250
+  soft_limit = 200
+
+[[statics]]
+  guest_path = "/var/www/html/public"
+  url_prefix = "/"

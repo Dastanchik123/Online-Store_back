@@ -1,36 +1,46 @@
-FROM php:8.2-apache
+# Используем официальный образ PHP-FPM
+FROM php:8.2-fpm
 
-# Установка необходимых расширений PHP через надежный скрипт
-ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
-RUN chmod +x /usr/local/bin/install-php-extensions && \
-    install-php-extensions pdo_mysql gd bcmath zip intl opcache mbstring xml curl dom fileinfo tokenizer ctype iconv
+# Установка системных зависимостей и Nginx
+RUN apt-get update && apt-get install -y \
+    git curl libpng-dev libonig-dev libxml2-dev libzip-dev zip unzip libpq-dev nginx \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Включение модуля Apache Rewrite
-RUN a2enmod rewrite
-
-# Настройка корневой директории Apache для Laravel
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+# Установка расширений PHP (включая pdo_pgsql для Neon)
+RUN docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd zip
 
 # Установка Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Копируем только файлы зависимостей для кеширования
+# Настройка рабочей директории
 WORKDIR /var/www/html
-COPY composer.json composer.lock* ./
 
-# Установка зависимостей с игнорированием лимитов памяти и проверок платформы
-ENV COMPOSER_MEMORY_LIMIT=-1
-RUN composer install --no-dev --optimize-autoloader --no-scripts --ignore-platform-reqs --no-interaction
-
-# Копируем остальной код проекта
+# Копируем файлы проекта
 COPY . .
 
-# Настройка прав доступа
+# Устанавливаем зависимости Laravel
+RUN composer install --no-interaction --optimize-autoloader --no-dev
+
+# Права доступа
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Порт по умолчанию для Render
-EXPOSE 80
+# Настройка Nginx
+RUN echo 'server { \
+    listen 8080; \
+    root /var/www/html/public; \
+    index index.php index.html; \
+    location / { \
+        try_files $uri $uri/ /index.php?$query_string; \
+    } \
+    location ~ \.php$ { \
+        include fastcgi_params; \
+        fastcgi_pass 127.0.0.1:9000; \
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name; \
+    } \
+}' > /etc/nginx/sites-available/default
 
-CMD ["apache2-foreground"]
+# Указываем порт для Fly
+EXPOSE 8080
+
+# Скрипт запуска: стартуем PHP-FPM и Nginx
+CMD php-fpm -D && nginx -g "daemon off;"

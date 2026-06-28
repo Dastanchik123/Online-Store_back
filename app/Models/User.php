@@ -5,19 +5,30 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Traits\HasUuid;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasUuid;
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if (is_numeric($value)) {
+            return $this->where('id', $value)->first();
+        }
+        return $this->where('uuid', $value)->first();
+    }
 
     
     protected $fillable = [
+        'uuid',
         'name',
         'email',
         'password',
         'role',
         'phone',
         'avatar_path',
+        'terminal_id',
     ];
 
     
@@ -63,6 +74,21 @@ class User extends Authenticatable
     public function debts()
     {
         return $this->hasMany(CustomerDebt::class);
+    }
+
+    public function setTerminalIdAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['terminal_id'] = null;
+            return;
+        }
+
+        // Если пришло число (например "1"), добавляем префикс "k"
+        if (is_numeric($value)) {
+            $this->attributes['terminal_id'] = 'k' . $value;
+        } else {
+            $this->attributes['terminal_id'] = $value;
+        }
     }
 
     public function wishlist()

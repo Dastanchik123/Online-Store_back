@@ -35,8 +35,9 @@ class UserController extends Controller
             'name'     => 'required|string|max:255',
             'email'    => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role'     => 'required|string|in:admin,user,purchaser,cashier',
+            'role'     => 'required|string|in:admin,user,purchaser,cashier,manager',
             'phone'    => 'nullable|string',
+            'terminal_id' => 'nullable|string',
         ]);
 
         $validated['password'] = \Illuminate\Support\Facades\Hash::make($validated['password']);
@@ -108,8 +109,9 @@ class UserController extends Controller
         $validated = $request->validate([
             'name'     => 'sometimes|string|max:255',
             'email'    => 'sometimes|email|unique:users,email,' . $user->id,
-            'role'     => 'sometimes|string|in:admin,user,purchaser,cashier',
+            'role'     => 'sometimes|string|in:admin,user,purchaser,cashier,manager',
             'phone'    => 'nullable|string',
+            'terminal_id' => 'nullable|string',
             'password' => 'nullable|string|min:8',
             'avatar'   => 'nullable|image|max:10240', 
         ]);

@@ -611,21 +611,13 @@ class OrderController extends Controller
     
     public function trackByNumber($orderNumber)
     {
-        $query = Order::with(['items.product', 'shippingAddress', 'user']);
+        $query = Order::with(['items.product', 'shippingAddress', 'user', 'staff']);
 
-        if (is_numeric($orderNumber)) {
-            $query->where(function ($q) use ($orderNumber) {
-                $q->where('order_number', $orderNumber)
-                    ->orWhere('id', $orderNumber);
-            });
-        } else {
-            $query->where('order_number', $orderNumber);
-        }
-
-        $order = $query->first();
+        // Ищем строго по номеру чека (order_number)
+        $order = $query->where('order_number', (string) $orderNumber)->first();
 
         if (! $order) {
-            return response()->json(['message' => 'Order not found'], 404);
+            return response()->json(['message' => 'Заказ с таким номером не найден'], 404);
         }
 
         return response()->json($order);
