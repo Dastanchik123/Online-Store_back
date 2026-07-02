@@ -25,4 +25,4 @@ COPY nginx.conf /etc/nginx/sites-available/default
 
 EXPOSE 8080
 
-CMD php-fpm -D && nginx -g "daemon off;"
+CMD chown -R www-data:www-data /var/www/html/storage && php-fpm -D && nginx -g "daemon off;"
