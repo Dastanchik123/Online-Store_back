@@ -8,3 +8,4 @@ storage/*.key
 /storage/framework/testing/*
 /storage/framework/views/*
 /public/storage
+/bootstrap/cache/*.php

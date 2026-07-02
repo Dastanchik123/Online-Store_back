@@ -1,13 +1,20 @@
-app = "your-laravel-api-name"
+app = "online-store-back"
 primary_region = "fra" # Франкфурт (или другой регион поближе к Neon)
 
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  release_command = "php artisan migrate --force"
+
 [env]
   PORT = "8080"
   APP_ENV = "production"
   LOG_CHANNEL = "stderr" # ВАЖНО: для сбора логов в консоль Fly
+
+[[mounts]]
+  source = "storage_data"
+  destination = "/var/www/html/storage/app/public"
 
 [http_service]
   internal_port = 8080

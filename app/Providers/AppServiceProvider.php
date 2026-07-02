@@ -16,11 +16,15 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        if (Schema::hasTable('settings')) {
-            View::composer('pdf.*', function ($view) {
-                $settings = Setting::all()->pluck('value', 'key');
-                $view->with('settings', $settings);
-            });
+        try {
+            if (Schema::hasTable('settings')) {
+                View::composer('pdf.*', function ($view) {
+                    $settings = Setting::all()->pluck('value', 'key');
+                    $view->with('settings', $settings);
+                });
+            }
+        } catch (\Throwable $e) {
+            // Database not reachable yet (e.g. during build-time artisan commands) - skip.
         }
     }
 }
