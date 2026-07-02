@@ -5,6 +5,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CustomerDebt;
+use App\Models\DebtPayment;
 use App\Models\FinancialTransaction;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -333,10 +334,15 @@ class OrderController extends Controller
             
             if ($newPaymentStatus === 'paid' && $oldPaymentStatus !== 'paid') {
                 
-                $hasDebtPayment = FinancialTransaction::where('trackable_type', 'App\Models\DebtPayment')
-                    ->whereHas('trackable', function ($q) use ($order) {
-                        $q->where('order_id', $order->id);
-                    })->exists();
+                $hasDebtPayment = FinancialTransaction::whereHasMorph(
+                    'trackable',
+                    [DebtPayment::class],
+                    function ($q) use ($order) {
+                        $q->whereHas('debt', function ($qq) use ($order) {
+                            $qq->where('order_id', $order->id);
+                        });
+                    }
+                )->exists();
 
                 if (! $hasDebtPayment) {
                     FinancialTransaction::updateOrCreate(
