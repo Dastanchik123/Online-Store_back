@@ -79,8 +79,11 @@ class ProductController extends Controller
             $query->where('price', '<=', $request->max_price);
         }
 
-        $orderBy  = 'name';
-        $orderDir = 'asc';
+        $allowedSortColumns = ['name', 'price', 'created_at', 'sales_count'];
+        $orderBy            = in_array($request->get('sort_by'), $allowedSortColumns)
+            ? $request->get('sort_by')
+            : 'name';
+        $orderDir = strtolower((string) $request->get('sort_order')) === 'desc' ? 'desc' : 'asc';
 
         if ($request->boolean('is_hot')) {
             $orderBy  = 'hot_order';
