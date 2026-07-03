@@ -60,9 +60,14 @@ class ProductController extends Controller
                 })->orderByRaw("{$relevance} desc", [$search, $search]);
             } else {
                 // Прямых совпадений нет (например, опечатка) — тихо подставляем
-                // ближайшие по написанию товары без отдельного "возможно, вы имели в виду"
+                // ближайшие по написанию товары без отдельного "возможно, вы имели в виду".
+                // Триграммы используем для отбора кандидатов, а финальный порядок —
+                // по расстоянию Левенштейна до ближайшего слова в названии: оно
+                // точнее отражает "похожесть по опечатке", чем чистое сходство триграмм.
+                $wordDistance = '(SELECT MIN(levenshtein(lower(w), lower(?))) FROM unnest(string_to_array(name, \' \')) AS w)';
+
                 $query->whereRaw("{$relevance} >= 0.25", [$search, $search])
-                    ->orderByRaw("{$relevance} desc", [$search, $search]);
+                    ->orderByRaw("{$wordDistance} asc", [$search]);
             }
         }
 
