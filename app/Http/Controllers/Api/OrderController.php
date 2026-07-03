@@ -108,6 +108,7 @@ class OrderController extends Controller
             'due_date'            => 'nullable|date|after:today',
             'initial_payment'     => 'nullable|numeric|min:0',
             'payment_method'      => 'nullable|string',
+            'coupon_code'         => 'nullable|string',
         ]);
 
         $user = Auth::user();
@@ -141,11 +142,23 @@ class OrderController extends Controller
                 $billingAddressId = $billingAddress->id;
             }
 
-            
+
             $subtotal     = $cart->total;
-            $tax          = 0; 
-            $shippingCost = 0; 
+            $tax          = 0;
+            $shippingCost = 0;
             $discount     = 0;
+
+            if (! empty($validated['coupon_code'])) {
+                $coupon = \App\Models\Coupon::where('code', $validated['coupon_code'])->first();
+
+                if ($coupon && $coupon->isValid() && $subtotal >= $coupon->min_order_amount) {
+                    $discount = $coupon->type === 'percent'
+                        ? $subtotal * $coupon->value / 100
+                        : (float) $coupon->value;
+                    $discount = min($discount, $subtotal);
+                }
+            }
+
             $total        = $subtotal + $shippingCost - $discount;
 
             
