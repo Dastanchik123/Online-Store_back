@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Services\AiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Facades\Image;
@@ -36,13 +37,33 @@ class ProductController extends Controller
             $query->where('hot_group', $request->hot_group);
         }
 
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%");
-            });
+        $isSearching = false;
+
+        if ($request->filled('search')) {
+            $search      = trim($request->search);
+            $isSearching = true;
+
+            $hasDirectMatch = (clone $query)->where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('sku', 'ilike', "%{$search}%")
+                    ->orWhere('description', 'ilike', "%{$search}%");
+            })->exists();
+
+            $relevance = 'GREATEST(similarity(name, ?), word_similarity(?, name))';
+
+            if ($hasDirectMatch) {
+                // Точные/подстрочные совпадения — им отдаём приоритет
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('sku', 'ilike', "%{$search}%")
+                        ->orWhere('description', 'ilike', "%{$search}%");
+                })->orderByRaw("{$relevance} desc", [$search, $search]);
+            } else {
+                // Прямых совпадений нет (например, опечатка) — тихо подставляем
+                // ближайшие по написанию товары без отдельного "возможно, вы имели в виду"
+                $query->whereRaw("{$relevance} >= 0.25", [$search, $search])
+                    ->orderByRaw("{$relevance} desc", [$search, $search]);
+            }
         }
 
         if ($request->has('min_price')) {
