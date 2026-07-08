@@ -1,0 +1,27 @@
+{
+  "debug": true,
+  "port": 6001,
+  "appManager": {
+    "driver": "array",
+    "cache": {
+      "enabled": false,
+      "ttl": -1
+    },
+    "array": {
+      "apps": [
+        {
+          "id": "local-app-id",
+          "key": "local-app-key",
+          "secret": "local-app-secret",
+          "maxConnections": -1,
+          "enableClientMessages": false,
+          "enabled": true,
+          "maxBackendEventsPerSecond": -1,
+          "maxClientEventsPerSecond": -1,
+          "maxReadRequestsPerSecond": -1,
+          "webhooks": []
+        }
+      ]
+    }
+  }
+}

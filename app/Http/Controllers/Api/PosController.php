@@ -170,6 +170,7 @@ class PosController extends Controller
 
                 $product->decrement('stock_quantity', $itemData['quantity']);
                 $product->increment('sales_count', $itemData['quantity']);
+                $product->update(['in_stock' => $product->stock_quantity > 0]);
             }
 
             $orderTotal       = $order->total;

@@ -192,13 +192,9 @@ class OrderController extends Controller
                     'total'          => $cartItem->subtotal,
                 ]);
 
-                
+
                 $product->decrement('stock_quantity', $cartItem->quantity);
                 $product->increment('sales_count', $cartItem->quantity);
-
-                if ($product->stock_quantity <= 0) {
-                    $product->update(['in_stock' => false]);
-                }
             }
 
             
@@ -245,6 +241,12 @@ class OrderController extends Controller
             DB::commit();
 
             $order->load('items.product', 'shippingAddress', 'billingAddress');
+
+            try {
+                broadcast(new \App\Events\NewOrderPlaced($order));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Broadcast failed (NewOrderPlaced): ' . $e->getMessage());
+            }
 
             return response()->json($order, 201);
         } catch (\Exception $e) {
@@ -394,7 +396,6 @@ class OrderController extends Controller
 
                     if ($product && $qtyToReturn > 0) {
                         $product->increment('stock_quantity', $qtyToReturn);
-                        $product->update(['in_stock' => true]);
                     }
 
                     
@@ -426,7 +427,6 @@ class OrderController extends Controller
 
                     if ($product && $qtyToReturn > 0) {
                         $product->increment('stock_quantity', $qtyToReturn);
-                        $product->update(['in_stock' => true]);
                     }
 
                     
@@ -439,12 +439,7 @@ class OrderController extends Controller
                 foreach ($order->items as $item) {
                     $product = $item->product;
                     if ($product) {
-                        
-                        
                         $product->decrement('stock_quantity', $item->quantity);
-                        if ($product->stock_quantity <= 0) {
-                            $product->update(['in_stock' => false]);
-                        }
                     }
                     
                     $item->update(['refunded_quantity' => 0]);
@@ -514,11 +509,17 @@ class OrderController extends Controller
                     ]);
             }
 
+            try {
+                broadcast(new \App\Events\OrderStatusUpdated($order));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
+            }
+
             return response()->json($order->load('items.product'));
         });
     }
 
-    
+
     public function cancel(Order $order)
     {
         $user = Auth::user();
@@ -537,11 +538,16 @@ class OrderController extends Controller
             foreach ($order->items as $item) {
                 $product = $item->product;
                 $product->increment('stock_quantity', $item->quantity);
-                $product->update(['in_stock' => true]);
             }
 
             $order->update(['status' => 'cancelled']);
             DB::commit();
+
+            try {
+                broadcast(new \App\Events\OrderStatusUpdated($order));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
+            }
 
             return response()->json(['message' => 'Order cancelled successfully']);
         } catch (\Exception $e) {
@@ -582,7 +588,6 @@ class OrderController extends Controller
                 $product = $orderItem->product;
                 if ($product) {
                     $product->increment('stock_quantity', $returnItem['quantity']);
-                    $product->update(['in_stock' => true]);
                 }
 
                 

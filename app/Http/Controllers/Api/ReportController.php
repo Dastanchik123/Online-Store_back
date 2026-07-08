@@ -62,6 +62,7 @@ class ReportController extends Controller
             'total_debit'   => $totalDebit,
             'total_credit'  => $totalCredit,
             'end_balance'   => $endBalance,
+            'settings'      => $this->getReceiptSettings(),
         ];
 
         $pdf = Pdf::loadView('pdf.reconciliation', $data);
@@ -71,7 +72,7 @@ class ReportController extends Controller
     public function purchase(Purchase $purchase)
     {
         $purchase->load(['supplier', 'items.product']);
-        $pdf = Pdf::loadView('pdf.purchase', ['purchase' => $purchase]);
+        $pdf = Pdf::loadView('pdf.purchase', ['purchase' => $purchase, 'settings' => $this->getReceiptSettings()]);
         return $pdf->download("purchase_{$purchase->id}.pdf");
     }
 
@@ -97,7 +98,7 @@ class ReportController extends Controller
 
         $products = $query->orderBy('name')->get();
 
-        $pdf = Pdf::loadView('pdf.products', ['products' => $products]);
+        $pdf = Pdf::loadView('pdf.products', ['products' => $products, 'settings' => $this->getReceiptSettings()]);
         return $pdf->download("products_report.pdf");
     }
 
@@ -176,6 +177,7 @@ class ReportController extends Controller
             'groupedDebts'   => [],
             'title'          => 'БИЗНЕС-ОТЧЕТ: ДЕБИТОРСКАЯ ЗАДОЛЖЕННОСТЬ',
             'date'           => date('d.m.Y H:i'),
+            'settings'       => $this->getReceiptSettings(),
         ];
 
         if ($isGrouped) {
@@ -306,7 +308,9 @@ class ReportController extends Controller
     public function order(Order $order)
     {
         $order->load(['items.product', 'user', 'shippingAddress']);
-        $pdf = Pdf::loadView('pdf.order', ['order' => $order]);
+        $settings = $this->getReceiptSettings();
+
+        $pdf = Pdf::loadView('pdf.order', array_merge(['order' => $order, 'settings' => $settings], $settings));
         return $pdf->stream("order_invoice_{$order->id}.pdf");
     }
 
@@ -342,16 +346,22 @@ class ReportController extends Controller
             'receipt_phone',
             'receipt_footer',
             'site_name',
+            'site_inn',
             'contact_phone',
+            'contact_address',
         ];
 
         $settings = \App\Models\Setting::whereIn('key', $keys)->pluck('value', 'key');
 
         return [
-            'receipt_header' => $settings['receipt_header'] ?? $settings['site_name'] ?? 'Shop',
-            'receipt_title'  => $settings['receipt_title'] ?? '',
-            'receipt_phone'  => $settings['receipt_phone'] ?? $settings['contact_phone'] ?? '',
-            'receipt_footer' => $settings['receipt_footer'] ?? "СПАСИБО ЗА ПОКУПКУ!\nТовар обмену и возврату подлежит\nв течение 14 дней при наличии чека",
+            'receipt_header'  => $settings['receipt_header'] ?? $settings['site_name'] ?? 'Shop',
+            'receipt_title'   => $settings['receipt_title'] ?? '',
+            'receipt_phone'   => $settings['receipt_phone'] ?? $settings['contact_phone'] ?? '',
+            'receipt_footer'  => $settings['receipt_footer'] ?? "СПАСИБО ЗА ПОКУПКУ!\nТовар обмену и возврату подлежит\nв течение 14 дней при наличии чека",
+            'site_name'       => $settings['site_name'] ?? 'Мой Магазин',
+            'site_inn'        => $settings['site_inn'] ?? null,
+            'contact_phone'   => $settings['contact_phone'] ?? null,
+            'contact_address' => $settings['contact_address'] ?? null,
         ];
     }
 

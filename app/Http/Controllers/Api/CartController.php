@@ -47,7 +47,7 @@ class CartController extends Controller
 
         $product = Product::findOrFail($validated['product_id']);
 
-        if (!$product->in_stock || $product->stock_quantity < $validated['quantity']) {
+        if (!$product->in_stock) {
             return response()->json(['message' => 'Product is out of stock'], 400);
         }
 
@@ -89,8 +89,8 @@ class CartController extends Controller
         }
 
         $product = $cartItem->product;
-        if ($product->stock_quantity < $validated['quantity']) {
-            return response()->json(['message' => 'Insufficient stock'], 400);
+        if (!$product->in_stock) {
+            return response()->json(['message' => 'Product is out of stock'], 400);
         }
 
         $cartItem->update(['quantity' => $validated['quantity']]);

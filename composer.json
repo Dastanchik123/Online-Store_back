@@ -18,7 +18,8 @@
         "laravel/tinker": "^2.5",
         "maatwebsite/excel": "^3.1",
         "phpoffice/phpspreadsheet": "^1.12",
-        "picqer/php-barcode-generator": "^2.4"
+        "picqer/php-barcode-generator": "^2.4",
+        "pusher/pusher-php-server": "^7.2"
     },
     "require-dev": {
         "facade/ignition": "^2.5",
