@@ -319,8 +319,13 @@ class ReportController extends Controller
         $order->load(['items.product', 'user', 'staff']);
         $settings = $this->getReceiptSettings();
 
+        // Высота чека зависит от количества позиций, чтобы весь чек уместился
+        // на одной непрерывной "ленте" вместо разбивки на несколько страниц.
+        $itemCount = $order->items->count();
+        $height = max(500, 320 + $itemCount * 34);
+
         $pdf = Pdf::loadView('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
-        $pdf->setPaper([0, 0, 226.77, 600], 'portrait');
+        $pdf->setPaper([0, 0, 226.77, $height], 'portrait');
         return $pdf->stream("receipt_{$order->id}.pdf");
     }
 

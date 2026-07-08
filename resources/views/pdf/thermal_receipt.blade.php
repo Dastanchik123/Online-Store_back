@@ -7,143 +7,138 @@
             size: 80mm auto;
             margin: 0;
         }
+        html { color-scheme: light; }
         body {
-            font-family: 'DejaVu Sans ', sans-serif;
+            font-family: 'DejaVu Sans', sans-serif;
             width: 72mm;
-            /* margin: 0 auto; */
-            border:1px solid black;
-            padding: 12mm 0 0;
-            float: right;
-            font-size: 12px;
+            margin: 0 auto;
+            padding: 4mm 4mm 6mm;
+            font-size: 11px;
             color: #000;
-            line-height: 1.2;
+            background: #fff;
+            line-height: 1.35;
         }
         .center { text-align: center; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 2mm 0; }
+        .divider { border-top: 1px dashed #000; margin: 2.5mm 0; }
+        .divider-solid { border-top: 1.5px solid #000; margin: 3mm 0 2mm; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 2mm;
-        }
-        th {
+        table { width: 100%; border-collapse: collapse; }
+
+        .shop-header { margin-bottom: 3mm; }
+        .shop-name { font-size: 15px; font-weight: bold; margin-bottom: 1mm; }
+        .shop-meta { font-size: 9px; color: #222; line-height: 1.5; }
+
+        table.meta-table td { font-size: 9.5px; padding: 0.3mm 0; }
+        table.meta-table td.meta-right { text-align: right; }
+
+        table.items-table th {
             text-align: left;
             border-bottom: 1px solid #000;
-            font-size: 10px;
+            font-size: 9px;
+            text-transform: uppercase;
             padding-bottom: 1mm;
         }
-        td {
-            padding: 1mm 0;
-            vertical-align: top;
-            font-size: 10px;
-        }
+        table.items-table th.right { text-align: right; }
 
-        .summary-table td {
-            padding: 0.5mm 0;
-        }
-        .total-row {
-            font-size: 14px;
-            font-weight: bold;
-        }
-        .shop-header {
-            margin-bottom: 3mm;
-        }
-        .shop-name {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 1mm;
-        }
-        .info-line {
-            display: flex;
-            justify-content: space-between;
-            font-size: 10px;
-        }
+        .item-row td { padding-top: 2mm; font-size: 10.5px; font-weight: bold; }
+        .item-sub td { font-size: 9.5px; color: #333; padding-bottom: 1mm; }
+        .item-sub td.right { text-align: right; }
+
+        table.summary-table td { padding: 0.7mm 0; font-size: 11px; }
+        table.summary-table td.right { text-align: right; }
+        .total-row td { font-size: 15px; font-weight: bold; padding-top: 1.5mm; }
+
+        .footer-text { margin-top: 4mm; font-size: 9.5px; white-space: pre-wrap; font-style: italic; line-height: 1.5; }
     </style>
 </head>
 <body>
-    <div class="receipt">
-        <div class="shop-header center">
-            <div class="shop-name">{{ $settings['receipt_title'] ?? $settings['site_name'] ?? 'Мой Магазин' }}</div>
+    <div class="shop-header center">
+        <div class="shop-name">{{ $settings['receipt_title'] ?? $settings['site_name'] ?? 'Мой Магазин' }}</div>
+        <div class="shop-meta">
             @if(!empty($settings['site_inn']))
-                <div style="font-size: 9px;">ИНН: {{ $settings['site_inn'] }}</div>
+                ИНН: {{ $settings['site_inn'] }}<br>
             @endif
             @if(!empty($settings['contact_address']))
-                <div style="font-size: 9px;">{{ $settings['contact_address'] }}</div>
+                {{ $settings['contact_address'] }}
             @endif
-            <div class="info-line" style="margin-top: 2mm;">
-                <span>Дата: {{ now()->format('d.m.Y H:i') }}</span>
-                <span>Чек №{{ $order->order_number ?: $order->id }}</span>
-            </div>
-            <div class="info-line">
-                <span>Кассир: {{ $order->staff->name ?? 'Админ' }}</span>
-            </div>
         </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 45%;">Наименование</th>
-                    <th style="width: 15%;">Кол.</th>
-                    <th style="width: 20%;">Цена</th>
-                    <th style="width: 20%; text-align: right;">Сумма</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($order->items as $item)
-                <tr>
-                    <td>{{ $item->product_name }}</td>
-                    <td>{{ (float)$item->quantity }}</td>
-                    <td>{{ number_format($item->price, 0, '.', '') }}</td>
-                    <td style="text-align: right;">{{ number_format($item->total, 0, '.', '') }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-
-        <div class="divider"></div>
-
-        <table class="summary-table">
-            @if($order->discount > 0)
-            <tr>
-                <td>Скидка:</td>
-                <td style="text-align: right;">-{{ number_format($order->discount, 0, '.', '') }} сом</td>
-            </tr>
-            @endif
-            <tr class="total-row">
-                <td>ИТОГО:</td>
-                <td style="text-align: right;">{{ number_format($order->total, 0, '.', '') }} сом</td>
-            </tr>
-            @if($order->cash_received > 0)
-            <tr>
-                <td>Наличными:</td>
-                <td style="text-align: right;">{{ number_format($order->cash_received, 0, '.', '') }} сом</td>
-            </tr>
-            @endif
-            @if($order->transfer_received > 0)
-            <tr>
-                <td>Безналичными:</td>
-                <td style="text-align: right;">{{ number_format($order->transfer_received, 0, '.', '') }} сом</td>
-            </tr>
-            @endif
-            @php
-                $total_received = ($order->cash_received ?? 0) + ($order->transfer_received ?? 0);
-                $change = $total_received - $order->total;
-            @endphp
-            @if($change > 0)
-            <tr style="font-weight: bold; border-top: 1px dashed #eee;">
-                <td style="padding-top: 1mm;">СДАЧА:</td>
-                <td style="text-align: right; padding-top: 1mm;">{{ number_format($change, 0, '.', '') }} сом</td>
-            </tr>
-            @endif
-        </table>
-
-        <div class="center" style="margin-top: 4mm; font-size: 10px; white-space: pre-wrap; font-style: italic;">
-            {{ $receipt_footer ?? 'Спасибо за покупку!' }}
-        </div>
-
-        <div class="divider" style="margin-top: 5mm; border-top-style: solid; border-top-width: 2px;"></div>
     </div>
+
+    <div class="divider"></div>
+
+    <table class="meta-table">
+        <tr>
+            <td>Дата: {{ now()->format('d.m.Y H:i') }}</td>
+            <td class="meta-right">Чек №{{ $order->order_number ?: $order->id }}</td>
+        </tr>
+        <tr>
+            <td colspan="2">Кассир: {{ $order->staff->name ?? 'Админ' }}</td>
+        </tr>
+    </table>
+
+    <div class="divider"></div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th>Наименование</th>
+                <th class="right">Сумма</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($order->items as $item)
+            <tr class="item-row">
+                <td colspan="2">{{ $item->product_name }}</td>
+            </tr>
+            <tr class="item-sub">
+                <td>{{ (float)$item->quantity }} x {{ number_format($item->price, 0, '.', ' ') }}</td>
+                <td class="right">{{ number_format($item->total, 0, '.', ' ') }}</td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <table class="summary-table">
+        @if($order->discount > 0)
+        <tr>
+            <td>Скидка:</td>
+            <td class="right">-{{ number_format($order->discount, 0, '.', '') }} сом</td>
+        </tr>
+        @endif
+        <tr class="total-row">
+            <td>ИТОГО:</td>
+            <td class="right">{{ number_format($order->total, 0, '.', '') }} сом</td>
+        </tr>
+        @if($order->cash_received > 0)
+        <tr>
+            <td>Наличными:</td>
+            <td class="right">{{ number_format($order->cash_received, 0, '.', '') }} сом</td>
+        </tr>
+        @endif
+        @if($order->transfer_received > 0)
+        <tr>
+            <td>Безналичными:</td>
+            <td class="right">{{ number_format($order->transfer_received, 0, '.', '') }} сом</td>
+        </tr>
+        @endif
+        @php
+            $total_received = ($order->cash_received ?? 0) + ($order->transfer_received ?? 0);
+            $change = $total_received - $order->total;
+        @endphp
+        @if($change > 0)
+        <tr>
+            <td class="bold">СДАЧА:</td>
+            <td class="right bold">{{ number_format($change, 0, '.', '') }} сом</td>
+        </tr>
+        @endif
+    </table>
+
+    <div class="divider-solid"></div>
+
+    <div class="footer-text center">{{ $receipt_footer ?? 'Спасибо за покупку!' }}</div>
 </body>
 </html>
