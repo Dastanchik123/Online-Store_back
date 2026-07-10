@@ -307,7 +307,7 @@ class ReportController extends Controller
 
     public function order(Order $order)
     {
-        $order->load(['items.product', 'user', 'shippingAddress']);
+        $order->load(['items.product', 'user', 'shippingAddress', 'staff']);
         $settings = $this->getReceiptSettings();
 
         $pdf = Pdf::loadView('pdf.order', array_merge(['order' => $order, 'settings' => $settings], $settings));
@@ -331,7 +331,7 @@ class ReportController extends Controller
 
     public function orderHtml(Order $order)
     {
-        $order->load(['items.product', 'user', 'shippingAddress']);
+        $order->load(['items.product', 'user', 'shippingAddress', 'staff']);
         $settings = $this->getReceiptSettings();
         return view('pdf.order', array_merge(['order' => $order], $settings));
     }

@@ -31,7 +31,8 @@
         .shop-meta { font-size: 9px; color: #222; line-height: 1.5; }
 
         table.meta-table td { font-size: 9.5px; padding: 0.3mm 0; }
-        table.meta-table td.meta-right { text-align: right; }
+
+        .receipt-title { font-size: 12px; margin-bottom: 2mm; }
 
         table.items-table th {
             text-align: left;
@@ -39,12 +40,14 @@
             font-size: 9px;
             text-transform: uppercase;
             padding-bottom: 1mm;
+            white-space: nowrap;
         }
         table.items-table th.right { text-align: right; }
+        table.items-table th.center { text-align: center; }
 
-        .item-row td { padding-top: 2mm; font-size: 10.5px; font-weight: bold; }
-        .item-sub td { font-size: 9.5px; color: #333; padding-bottom: 1mm; }
-        .item-sub td.right { text-align: right; }
+        .item-row td { padding: 1.5mm 0; font-size: 10.5px; }
+        .item-row td.center { text-align: center; }
+        .item-row td.right { text-align: right; }
 
         table.summary-table td { padding: 0.7mm 0; font-size: 11px; }
         table.summary-table td.right { text-align: right; }
@@ -68,10 +71,11 @@
 
     <div class="divider"></div>
 
+    <div class="center bold receipt-title">ТОВАРНЫЙ ЧЕК № {{ $order->order_number ?: $order->id }}</div>
+
     <table class="meta-table">
         <tr>
-            <td>Дата: {{ now()->format('d.m.Y H:i') }}</td>
-            <td class="meta-right">Чек №{{ $order->order_number ?: $order->id }}</td>
+            <td colspan="2">Дата: {{ now()->format('d.m.Y H:i') }}</td>
         </tr>
         <tr>
             <td colspan="2">Кассир: {{ $order->staff->name ?? 'Админ' }}</td>
@@ -84,16 +88,15 @@
         <thead>
             <tr>
                 <th>Наименование</th>
+                <th class="center">Кол-во</th>
                 <th class="right">Сумма</th>
             </tr>
         </thead>
         <tbody>
             @foreach($order->items as $item)
             <tr class="item-row">
-                <td colspan="2">{{ $item->product_name }}</td>
-            </tr>
-            <tr class="item-sub">
-                <td>{{ (float)$item->quantity }} x {{ number_format($item->price, 0, '.', ' ') }}</td>
+                <td>{{ $item->product_name }}</td>
+                <td class="center">{{ (float)$item->quantity }}</td>
                 <td class="right">{{ number_format($item->total, 0, '.', ' ') }}</td>
             </tr>
             @endforeach
@@ -139,6 +142,6 @@
 
     <div class="divider-solid"></div>
 
-    <div class="footer-text center">{{ $receipt_footer ?? 'Спасибо за покупку!' }}</div>
+    <div class="footer-text center">{{ $receipt_footer ?? 'Спасибо за покупку! Ждём вас снова!' }}</div>
 </body>
 </html>

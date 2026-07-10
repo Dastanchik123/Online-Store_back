@@ -15,6 +15,20 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        // Кэш ответа: повторные запросы с теми же параметрами отдаются из кэша мгновенно;
+        // любое изменение каталога сбрасывает кэш через ApiCache::bump() (см. AppServiceProvider)
+        $payload = \App\Support\ApiCache::remember(
+            'products',
+            $request->getQueryString() ?? '',
+            300,
+            fn () => $this->buildIndexPayload($request)
+        );
+
+        return response()->json($payload);
+    }
+
+    private function buildIndexPayload(Request $request): array
+    {
         $query = Product::query()->with('category');
 
         if ($request->has('category_id')) {
@@ -93,19 +107,29 @@ class ProductController extends Controller
         $perPage = $request->get('per_page', 15);
 
         if ($perPage == -1) {
-            $products = $query->orderBy($orderBy, $orderDir)->get();
-            return response()->json([
-                'data'         => $products,
+            // Полный каталог (админ-список): отдаём только нужные списку колонки —
+            // description и прочие длинные поля раздували ответ до мегабайт
+            $products = $query->orderBy($orderBy, $orderDir)
+                ->select([
+                    'id', 'uuid', 'category_id', 'name', 'slug', 'sku',
+                    'price', 'sale_price', 'purchase_price', 'stock_quantity',
+                    'is_active', 'in_stock', 'is_hot', 'hot_order', 'hot_group',
+                    'sales_count', 'image', 'images', 'created_at', 'updated_at',
+                ])
+                ->get();
+
+            return [
+                'data'         => $products->toArray(),
                 'total'        => $products->count(),
                 'current_page' => 1,
                 'last_page'    => 1,
                 'per_page'     => $products->count(),
-            ]);
+            ];
         }
 
         $products = $query->orderBy($orderBy, $orderDir)->paginate($perPage);
 
-        return response()->json($products);
+        return $products->toArray();
     }
     public function store(Request $request)
     {

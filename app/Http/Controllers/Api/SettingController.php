@@ -29,6 +29,14 @@ class SettingController extends Controller
 
     public function publicSettings()
     {
+        // Кэш ответа (сбрасывается при сохранении настроек — ApiCache::bump)
+        $payload = \App\Support\ApiCache::remember('settings-public', '', 600, fn () => $this->buildPublicSettings());
+
+        return response()->json($payload);
+    }
+
+    private function buildPublicSettings(): array
+    {
         $keys = [
             'site_name', 'site_logo', 'contact_phone', 'contact_email',
             'contact_address', 'social_instagram', 'social_whatsapp',
@@ -47,7 +55,7 @@ class SettingController extends Controller
             return [$item->key => $value];
         });
 
-        return response()->json($settings);
+        return $settings->toArray();
     }
 
     public function update(Request $request)

@@ -104,6 +104,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('returns', [ReturnController::class, 'index']);
         Route::get('returns/summary', [ReturnController::class, 'summary']);
 
+        Route::get('reports/order/{order}', [ReportController::class, 'order']);
+        Route::get('reports/order/{order}/html', [ReportController::class, 'orderHtml']);
+        Route::get('reports/order/{order}/thermal', [ReportController::class, 'thermalReceipt']);
+        Route::get('reports/order/{order}/thermal/html', [ReportController::class, 'thermalReceiptHtml']);
+
         Route::get('reports/reconciliation/{supplier}', [ReportController::class, 'reconciliation']);
         Route::get('reports/purchase/{purchase}', [ReportController::class, 'purchase']);
         Route::get('reports/products', [ReportController::class, 'products']);
@@ -177,11 +182,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/pos/staff', [\App\Http\Controllers\Api\PosController::class, 'getStaff']);
     Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'getAllProducts']);
     Route::post('/pos/sales/{id}/confirm', [\App\Http\Controllers\Api\PosController::class, 'confirmFinance']);
-
-    Route::get('reports/order/{order}', [ReportController::class, 'order']);
-    Route::get('reports/order/{order}/html', [ReportController::class, 'orderHtml']);
-    Route::get('reports/order/{order}/thermal', [ReportController::class, 'thermalReceipt']);
-    Route::get('reports/order/{order}/thermal/html', [ReportController::class, 'thermalReceiptHtml']);
 
     // Sync Routes for Offline POS
     Route::prefix('sync')->group(function () {

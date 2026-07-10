@@ -13,19 +13,27 @@ class CategoryController extends Controller
 
     public function index(Request $request)
     {
-        $query = Category::query();
+        // Кэш ответа (сбрасывается при изменении категорий — ApiCache::bump)
+        $payload = \App\Support\ApiCache::remember(
+            'categories',
+            $request->getQueryString() ?? '',
+            600,
+            function () use ($request) {
+                $query = Category::query();
 
-        if ($request->has('parent_id')) {
-            $query->where('parent_id', $request->parent_id);
-        }
+                if ($request->has('parent_id')) {
+                    $query->where('parent_id', $request->parent_id);
+                }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
+                if ($request->has('is_active')) {
+                    $query->where('is_active', $request->boolean('is_active'));
+                }
 
-        $categories = $query->with('parent', 'children')->orderBy('sort_order')->get();
+                return $query->with('parent', 'children')->orderBy('sort_order')->get()->toArray();
+            }
+        );
 
-        return response()->json($categories);
+        return response()->json($payload);
     }
 
     public function store(Request $request)
