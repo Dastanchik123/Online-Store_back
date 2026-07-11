@@ -1,0 +1,1 @@
+import{ae as i,G as a,K as e}from"./CI7v6we9.js";const r=i((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.isAdmin)return e("/")}});export{r as default};
