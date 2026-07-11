@@ -1,0 +1,1 @@
+import{ad as e,G as i,H as t}from"./E2mNHotN.js";const u=e((a,o)=>{const s=i();s.isAuthenticated||s.initAuth();{if(!s.isAuth)return t("/auth/login");if(!s.hasPermission("pos.access")&&!s.hasPermission("cashier.access"))return t("/")}});export{u as default};

@@ -1,1 +1,0 @@
-import{ad as i,G as a,H as e}from"./DgnNtnvd.js";const u=i((s,r)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.hasPermission("cashier.access"))return e("/")}});export{u as default};

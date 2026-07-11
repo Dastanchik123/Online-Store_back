@@ -1,0 +1,1 @@
+import{ad as e,G as a,H as i}from"./E2mNHotN.js";const r=e((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin)return i("/")}});export{r as default};
