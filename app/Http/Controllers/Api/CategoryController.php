@@ -29,7 +29,16 @@ class CategoryController extends Controller
                     $query->where('is_active', $request->boolean('is_active'));
                 }
 
-                return $query->with('parent', 'children')->orderBy('sort_order')->get()->toArray();
+                // order_by=name — алфавитный порядок (для админ-списка
+                // категорий); по умолчанию — sort_order, которым управляет
+                // ручная сортировка витрины (не меняем поведение сайта)
+                if ($request->get('order_by') === 'name') {
+                    $query->orderByRaw('LOWER(name) asc');
+                } else {
+                    $query->orderBy('sort_order');
+                }
+
+                return $query->with('parent', 'children')->get()->toArray();
             }
         );
 

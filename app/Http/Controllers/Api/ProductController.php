@@ -102,7 +102,7 @@ class ProductController extends Controller
             $query->where('price', '<=', $request->max_price);
         }
 
-        $allowedSortColumns = ['name', 'price', 'created_at', 'sales_count'];
+        $allowedSortColumns = ['name', 'price', 'created_at', 'sales_count', 'stock_quantity'];
         $orderBy            = in_array($request->get('sort_by'), $allowedSortColumns)
             ? $request->get('sort_by')
             : 'name';
