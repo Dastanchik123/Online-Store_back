@@ -21,4 +21,16 @@ trait HasUuid
         return 'uuid';
     }
     */
+
+    // Маршруты принимают и числовой id, и uuid: старые ссылки по id
+    // продолжают работать, а переходы по uuid не роняют Postgres
+    // ошибкой "invalid input syntax for type bigint"
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if ($field === null && is_string($value) && Str::isUuid($value)) {
+            return $this->where('uuid', $value)->first();
+        }
+
+        return parent::resolveRouteBinding($value, $field);
+    }
 }

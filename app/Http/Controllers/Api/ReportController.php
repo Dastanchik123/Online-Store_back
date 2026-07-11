@@ -78,7 +78,12 @@ class ReportController extends Controller
 
     public function products(Request $request)
     {
-        $query = Product::query()->with('category');
+        // dompdf на полном каталоге (1000+ строк) не влезает в дефолтные
+        // 128M / 30s — машина имеет 1 ГБ, поднимаем лимиты точечно
+        ini_set('memory_limit', '512M');
+        set_time_limit(120);
+
+        $query = Product::query()->with('category:id,name');
 
         if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);

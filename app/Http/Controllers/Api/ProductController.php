@@ -53,7 +53,16 @@ class ProductController extends Controller
 
         $isSearching = false;
 
-        if ($request->filled('search')) {
+        if ($request->filled('search') && $request->boolean('search_strict')) {
+            // Строгий поиск (админ-список): только вхождение подстроки в
+            // название или артикул без учёта регистра — никаких «похожих»
+            // товаров по триграммам и поиска по описанию
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('sku', 'ilike', "%{$search}%");
+            });
+        } elseif ($request->filled('search')) {
             $search      = trim($request->search);
             $isSearching = true;
 
