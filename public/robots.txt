@@ -1,2 +1,14 @@
+# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin/
+Disallow: /profile/
+Disallow: /checkout/
+Disallow: /cart/
+Disallow: /auth/
+
+# Sitemap
+Sitemap: https://kurulus-store.vercel.app/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 1

@@ -13,6 +13,8 @@ return [
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
-    'max_age' => 0,
+    // Кэш preflight в браузере: без него каждый запрос к API
+    // сопровождается лишним OPTIONS-раундтрипом до сервера
+    'max_age' => 86400,
     'supports_credentials' => true,
 ];

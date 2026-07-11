@@ -106,17 +106,33 @@ class ProductController extends Controller
 
         $perPage = $request->get('per_page', 15);
 
+        // fields=list — минимальный набор для табличных списков (админ-каталог):
+        // только колонки, видимые в таблице, категория лишь id+name, без appends
+        $light = $request->get('fields') === 'list';
+        if ($light) {
+            $query->select([
+                'id', 'uuid', 'category_id', 'name', 'sku',
+                'price', 'sale_price', 'stock_quantity', 'is_active',
+            ])->with('category:id,name');
+        }
+
         if ($perPage == -1) {
-            // Полный каталог (админ-список): отдаём только нужные списку колонки —
-            // description и прочие длинные поля раздували ответ до мегабайт
-            $products = $query->orderBy($orderBy, $orderDir)
-                ->select([
+            if (! $light) {
+                // Полный каталог: отдаём только нужные списку колонки —
+                // description и прочие длинные поля раздували ответ до мегабайт
+                $query->select([
                     'id', 'uuid', 'category_id', 'name', 'slug', 'sku',
                     'price', 'sale_price', 'purchase_price', 'stock_quantity',
                     'is_active', 'in_stock', 'is_hot', 'hot_order', 'hot_group',
                     'sales_count', 'image', 'images', 'created_at', 'updated_at',
-                ])
-                ->get();
+                ]);
+            }
+
+            $products = $query->orderBy($orderBy, $orderDir)->get();
+
+            if ($light) {
+                $products->makeHidden(['image_url', 'images_urls']);
+            }
 
             return [
                 'data'         => $products->toArray(),
@@ -128,6 +144,10 @@ class ProductController extends Controller
         }
 
         $products = $query->orderBy($orderBy, $orderDir)->paginate($perPage);
+
+        if ($light) {
+            $products->getCollection()->makeHidden(['image_url', 'images_urls']);
+        }
 
         return $products->toArray();
     }
