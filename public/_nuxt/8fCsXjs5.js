@@ -1,1 +1,0 @@
-import{ae as i,J as a,L as e}from"./DS2LqGHS.js";const u=i((s,r)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.hasPermission("cashier.access"))return e("/")}});export{u as default};

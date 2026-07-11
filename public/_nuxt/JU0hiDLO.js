@@ -1,0 +1,1 @@
+import{ae as i,J as a,L as e}from"./Dz5f431A.js";const r=i((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.isAdmin)return e("/")}});export{r as default};
