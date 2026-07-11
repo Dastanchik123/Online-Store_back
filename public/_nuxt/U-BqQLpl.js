@@ -1,1 +1,0 @@
-import{ae as i,I as a,K as e}from"./Dq9divzr.js";const r=i((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.isAdmin)return e("/")}});export{r as default};
