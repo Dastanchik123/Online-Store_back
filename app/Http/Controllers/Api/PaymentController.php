@@ -84,6 +84,12 @@ class PaymentController extends Controller
 
             DB::commit();
 
+            try {
+                broadcast(new \App\Events\OrderStatusUpdated($order));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
+            }
+
             return response()->json($payment->load('order'), 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -123,6 +129,12 @@ class PaymentController extends Controller
                 $payment->order->update(['payment_status' => 'failed']);
             } elseif ($validated['status'] === 'refunded') {
                 $payment->order->update(['payment_status' => 'refunded']);
+            }
+
+            try {
+                broadcast(new \App\Events\OrderStatusUpdated($payment->order));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }
         }
 

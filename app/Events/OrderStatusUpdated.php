@@ -5,6 +5,7 @@ namespace App\Events;
 use App\Models\Order;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -22,7 +23,12 @@ class OrderStatusUpdated implements ShouldBroadcast
 
     public function broadcastOn(): array
     {
-        return [new Channel('order.' . $this->order->order_number)];
+        return [
+            // Покупатель на странице отслеживания заказа
+            new Channel('order.' . $this->order->order_number),
+            // Админка/касса/закупщик — живое обновление списка заказов
+            new PrivateChannel('admin.orders'),
+        ];
     }
 
     public function broadcastAs(): string
@@ -33,6 +39,7 @@ class OrderStatusUpdated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
+            'id'             => $this->order->id,
             'order_number'   => $this->order->order_number,
             'status'         => $this->order->status,
             'payment_status' => $this->order->payment_status,

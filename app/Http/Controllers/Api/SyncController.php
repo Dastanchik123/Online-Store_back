@@ -389,6 +389,11 @@ class SyncController extends Controller
                     $debt->remaining_amount = 0;
                     if ($debt->order_id) {
                         $debt->order()->update(['payment_status' => 'paid']);
+                        try {
+                            broadcast(new \App\Events\OrderStatusUpdated($debt->order));
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
+                        }
                     }
                 } else {
                     $debt->status = 'partial';
