@@ -59,31 +59,16 @@ class OrderController extends Controller
             $query->where('payment_method', $request->payment_method);
         }
 
-        // date_from/date_to приходят как календарные даты в местном часовом
-        // поясе пользователя (Asia/Bishkek, UTC+6); created_at хранится в UTC —
-        // границы дня переводим в UTC явно, а не магическими subHours()
+        // date_from/date_to приходят от фронта уже как полные UTC-метки
+        // времени — границы дня в часовом поясе пользователя переводит в UTC
+        // сам браузер (см. orders.vue), поэтому здесь никаких допущений о
+        // часовом поясе не делаем, просто сравниваем метки как есть
         if ($request->filled('date_from')) {
-            $query->where(
-                'created_at',
-                '>=',
-                \Carbon\Carbon::parse($request->date_from, 'Asia/Bishkek')->startOfDay()->setTimezone('UTC'),
-            );
+            $query->where('created_at', '>=', \Carbon\Carbon::parse($request->date_from));
         }
 
         if ($request->filled('date_to')) {
-            $query->where(
-                'created_at',
-                '<=',
-                \Carbon\Carbon::parse($request->date_to, 'Asia/Bishkek')->endOfDay()->setTimezone('UTC'),
-            );
-        }
-
-        if ($request->filled('min_total')) {
-            $query->where('total', '>=', $request->min_total);
-        }
-
-        if ($request->filled('max_total')) {
-            $query->where('total', '<=', $request->max_total);
+            $query->where('created_at', '<=', \Carbon\Carbon::parse($request->date_to));
         }
 
         if ($request->filled('search')) {
@@ -97,7 +82,7 @@ class OrderController extends Controller
             });
         }
 
-        $perPage = $request->get('per_page', 15);
+        $perPage = $request->get('per_page', 30);
         $orders  = $query->latest()->paginate($perPage);
 
         return response()->json($orders);
