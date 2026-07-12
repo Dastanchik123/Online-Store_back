@@ -59,15 +59,23 @@ class OrderController extends Controller
             $query->where('payment_method', $request->payment_method);
         }
 
+        // date_from/date_to приходят как календарные даты в местном часовом
+        // поясе пользователя (Asia/Bishkek, UTC+6); created_at хранится в UTC —
+        // границы дня переводим в UTC явно, а не магическими subHours()
         if ($request->filled('date_from')) {
-            
-            
-            $query->where('created_at', '>=', \Carbon\Carbon::parse($request->date_from)->subHours(12));
+            $query->where(
+                'created_at',
+                '>=',
+                \Carbon\Carbon::parse($request->date_from, 'Asia/Bishkek')->startOfDay()->setTimezone('UTC'),
+            );
         }
 
         if ($request->filled('date_to')) {
-            
-            $query->where('created_at', '<=', \Carbon\Carbon::parse($request->date_to)->endOfDay()->subHours(6));
+            $query->where(
+                'created_at',
+                '<=',
+                \Carbon\Carbon::parse($request->date_to, 'Asia/Bishkek')->endOfDay()->setTimezone('UTC'),
+            );
         }
 
         if ($request->filled('min_total')) {
