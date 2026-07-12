@@ -102,13 +102,13 @@
     $itemsTotal = $order->items->sum(fn ($item) => $item->price * $item->quantity);
     $itemsCount = $order->items->count();
 
-    // Имя вводится при оформлении заказа (адрес доставки), даже если
-    // заказ гостевой без учётной записи — используем его как основной
-    // источник, а не только привязанного пользователя
+    // Имя/фамилия вводятся заново в форме оформления заказа — заказ может
+    // оформляться на другого человека, чем зарегистрированный аккаунт,
+    // поэтому это имя приоритетнее имени из профиля пользователя
     $addressName = trim(
         ($order->shippingAddress->first_name ?? '') . ' ' . ($order->shippingAddress->last_name ?? '')
     );
-    $customerName = $order->user->name ?? ($addressName !== '' ? $addressName : 'Розничный покупатель');
+    $customerName = $addressName !== '' ? $addressName : ($order->user->name ?? 'Розничный покупатель');
 @endphp
 
     <div class="title">
