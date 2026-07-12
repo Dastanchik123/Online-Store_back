@@ -59,12 +59,12 @@
         font-weight: bold;
         background: #f2f2f2;
     }
-    .c-num   { width: 30px;  text-align: center; }
+    .c-num   { width: 22px;  text-align: center; }
     .c-name  { text-align: left; }
-    .c-unit  { width: 60px;  text-align: center; }
-    .c-price { width: 90px;  text-align: right; }
-    .c-qty   { width: 70px;  text-align: center; }
-    .c-sum   { width: 100px; text-align: right; }
+    .c-unit  { width: 34px;  text-align: center; }
+    .c-price { width: 65px;  text-align: right; }
+    .c-qty   { width: 45px;  text-align: center; }
+    .c-sum   { width: 75px;  text-align: right; }
 
     .total-label { text-align: right; font-weight: bold; }
     .total-sum { font-weight: bold; }
