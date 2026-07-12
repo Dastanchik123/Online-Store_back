@@ -57,6 +57,19 @@
     </style>
 </head>
 <body>
+    @php
+        // Имя/адрес/телефон из формы заказа приоритетнее данных аккаунта —
+        // заказ может оформляться на другого человека (см. pdf/order.blade.php)
+        $addressName = trim(
+            ($order->shippingAddress->first_name ?? '') . ' ' . ($order->shippingAddress->last_name ?? '')
+        );
+        $customerName = $addressName !== '' ? $addressName : ($order->user->name ?? 'Розничный покупатель');
+        $customerPhone = $order->shippingAddress->phone ?? $order->user->phone ?? '';
+        $customerAddress = $order->shippingAddress
+            ? trim($order->shippingAddress->city . ', ' . $order->shippingAddress->address_line_1)
+            : '';
+    @endphp
+
     <div class="shop-header center">
         <div class="shop-name">{{ $settings['receipt_title'] ?? $settings['site_name'] ?? 'Мой Магазин' }}</div>
         <div class="shop-meta">
@@ -80,6 +93,19 @@
         <tr>
             <td colspan="2">Кассир: {{ $order->staff->name ?? 'Админ' }}</td>
         </tr>
+        <tr>
+            <td colspan="2">Покупатель: {{ $customerName }}</td>
+        </tr>
+        @if($customerPhone)
+        <tr>
+            <td colspan="2">Телефон: {{ $customerPhone }}</td>
+        </tr>
+        @endif
+        @if($customerAddress)
+        <tr>
+            <td colspan="2">Адрес: {{ $customerAddress }}</td>
+        </tr>
+        @endif
     </table>
 
     <div class="divider"></div>

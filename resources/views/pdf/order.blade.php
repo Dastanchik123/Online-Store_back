@@ -19,49 +19,60 @@
         text-align: center;
         font-size: 16px;
         font-weight: bold;
+        margin: 0 0 6px 0;
+    }
+    .title-rule {
+        border-top: 1.5px solid #999;
         margin: 0 0 16px 0;
     }
 
     table.header-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 14px;
+        margin-bottom: 16px;
     }
     table.header-table td {
-        padding: 2px 4px;
+        padding: 3px 4px;
         vertical-align: top;
         border: none;
     }
     table.header-table .label {
         width: 150px;
         font-weight: bold;
+        color: #444;
         white-space: nowrap;
     }
 
     table.items-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+        font-size: 11.5px;
     }
     table.items-table th,
     table.items-table td {
-        border: 1px solid #000;
-        padding: 5px 6px;
+        border: 1px solid #d0d0d0;
+        padding: 7px 9px;
     }
     table.items-table thead th {
         text-align: center;
         font-weight: bold;
-        background: #f2f2f2;
+        background: #f4f5f7;
+        color: #333;
+        border-bottom: 1.5px solid #999;
     }
-    .c-num   { width: 30px;  text-align: center; }
+    table.items-table tbody tr:nth-child(even) {
+        background: #fafafa;
+    }
+    .c-num   { width: 30px;  text-align: center; color: #777; }
     .c-name  { text-align: left; }
-    .c-unit  { width: 60px;  text-align: center; }
+    .c-unit  { width: 60px;  text-align: center; color: #555; }
     .c-price { width: 90px;  text-align: right; }
     .c-qty   { width: 70px;  text-align: center; }
-    .c-sum   { width: 100px; text-align: right; }
+    .c-sum   { width: 100px; text-align: right; font-weight: 600; }
 
-    .total-label { text-align: right; font-weight: bold; }
-    .total-sum { font-weight: bold; }
+    .total-label { text-align: right; font-weight: bold; border-top: 1.5px solid #999; }
+    .total-sum { font-weight: bold; border-top: 1.5px solid #999; }
 
     .summary-line { margin: 5px 0; }
 
@@ -115,6 +126,7 @@
     <div class="title">
         Накладная № {{ $order->id }} от «{{ $date->day }}» {{ $months[$date->month - 1] }} {{ $date->year }} г.
     </div>
+    <div class="title-rule"></div>
 
     <table class="header-table">
         <tr>

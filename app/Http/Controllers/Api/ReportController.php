@@ -321,7 +321,7 @@ class ReportController extends Controller
 
     public function thermalReceipt(Order $order)
     {
-        $order->load(['items.product', 'user', 'staff']);
+        $order->load(['items.product', 'user', 'shippingAddress', 'staff']);
         $settings = $this->getReceiptSettings();
 
         // Высота чека зависит от количества позиций, чтобы весь чек уместился
@@ -343,7 +343,7 @@ class ReportController extends Controller
 
     public function thermalReceiptHtml(Order $order)
     {
-        $order->load(['items.product', 'user', 'staff']);
+        $order->load(['items.product', 'user', 'shippingAddress', 'staff']);
         $settings = $this->getReceiptSettings();
         return view('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
     }
