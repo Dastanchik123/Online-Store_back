@@ -1,0 +1,1 @@
+import{ah as e,K as i,M as t}from"./Dr1s12Xo.js";const u=e((a,o)=>{const s=i();s.isAuthenticated||s.initAuth();{if(!s.isAuth)return t("/auth/login");if(!s.hasPermission("pos.access")&&!s.hasPermission("cashier.access"))return t("/")}});export{u as default};
