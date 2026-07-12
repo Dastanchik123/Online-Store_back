@@ -71,6 +71,7 @@ class CartController extends Controller
             'message' => 'Item added to cart',
             'cart' => $cart,
             'total' => $cart->total,
+            'items_count' => $cart->items_count,
         ], 201);
     }
 
@@ -100,6 +101,7 @@ class CartController extends Controller
             'message' => 'Cart item updated',
             'cart' => $cart,
             'total' => $cart->total,
+            'items_count' => $cart->items_count,
         ]);
     }
 
@@ -120,6 +122,7 @@ class CartController extends Controller
             'message' => 'Item removed from cart',
             'cart' => $cart,
             'total' => $cart->total,
+            'items_count' => $cart->items_count,
         ]);
     }
 
