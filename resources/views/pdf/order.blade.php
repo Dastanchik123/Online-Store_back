@@ -101,6 +101,14 @@
 
     $itemsTotal = $order->items->sum(fn ($item) => $item->price * $item->quantity);
     $itemsCount = $order->items->count();
+
+    // Имя вводится при оформлении заказа (адрес доставки), даже если
+    // заказ гостевой без учётной записи — используем его как основной
+    // источник, а не только привязанного пользователя
+    $addressName = trim(
+        ($order->shippingAddress->first_name ?? '') . ' ' . ($order->shippingAddress->last_name ?? '')
+    );
+    $customerName = $order->user->name ?? ($addressName !== '' ? $addressName : 'Розничный покупатель');
 @endphp
 
     <div class="title">
@@ -116,7 +124,7 @@
         </tr>
         <tr>
             <td class="label">Покупатель:</td>
-            <td>{{ $order->user->name ?? 'Розничный покупатель' }}</td>
+            <td>{{ $customerName }}</td>
         </tr>
         <tr>
             <td class="label">Адрес покупателя:</td>
@@ -172,7 +180,7 @@
                         <col style="width:140px"><col><col style="width:30px"><col>
                     </colgroup>
                     <tr>
-                        <td class="sig-title">Отпуск разрешил</td>
+                        <td class="sig-title">Отпустил</td>
                         <td class="sig-field">&nbsp;</td>
                         <td class="sig-gap"></td>
                         <td class="sig-field">{{ $order->staff->name ?? '' }}</td>
@@ -201,7 +209,7 @@
                         <td class="sig-title">Получил</td>
                         <td class="sig-field">&nbsp;</td>
                         <td class="sig-gap"></td>
-                        <td class="sig-field">{{ $order->user->name ?? 'Розничный покупатель' }}</td>
+                        <td class="sig-field">{{ $customerName }}</td>
                     </tr>
                 </table>
                 <table class="sig-row sig-caps">
