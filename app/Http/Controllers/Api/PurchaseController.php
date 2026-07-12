@@ -47,6 +47,7 @@ class PurchaseController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity'   => 'required|integer|min:1',
             'items.*.buy_price'  => 'required|numeric|min:0',
+            'items.*.sale_price' => 'nullable|numeric|min:0',
             'paid_amount'        => 'required|numeric|min:0',
             'notes'              => 'nullable|string',
         ]);
@@ -80,15 +81,18 @@ class PurchaseController extends Controller
                         'total'       => $itemData['quantity'] * $itemData['buy_price'],
                     ]);
 
-                    
+
                     $product = Product::find($itemData['product_id']);
                     if ($product) {
                         $product->increment('stock_quantity', $itemData['quantity']);
-                        $product->update(['in_stock' => true]);
+                        $product->update([
+                            'in_stock' => true,
+                            ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
+                        ]);
                     }
                 }
 
-                
+
                 if ($validated['paid_amount'] > 0) {
                     FinancialTransaction::create([
                         'user_id'        => auth()->id(),
@@ -129,6 +133,7 @@ class PurchaseController extends Controller
             'items.*.product_id' => 'required_with:items|exists:products,id',
             'items.*.quantity'   => 'required_with:items|integer|min:1',
             'items.*.buy_price'  => 'required_with:items|numeric|min:0',
+            'items.*.sale_price' => 'nullable|numeric|min:0',
         ]);
 
         return DB::transaction(function () use ($validated, $purchase, $request) {
@@ -165,7 +170,10 @@ class PurchaseController extends Controller
                     $product = Product::find($itemData['product_id']);
                     if ($product) {
                         $product->increment('stock_quantity', $itemData['quantity']);
-                        $product->update(['in_stock' => true]);
+                        $product->update([
+                            'in_stock' => true,
+                            ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
+                        ]);
                     }
                 }
                 $purchase->total_amount = $totalAmount;
