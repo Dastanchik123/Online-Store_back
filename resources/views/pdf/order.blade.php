@@ -46,33 +46,28 @@
     table.items-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 10px;
-        font-size: 11.5px;
+        margin-bottom: 8px;
+        font-size: 10px;
     }
     table.items-table th,
     table.items-table td {
-        border: 1px solid #d0d0d0;
-        padding: 7px 9px;
+        border: 1px solid #000;
+        padding: 3px 5px;
     }
     table.items-table thead th {
         text-align: center;
         font-weight: bold;
-        background: #f4f5f7;
-        color: #333;
-        border-bottom: 1.5px solid #999;
+        background: #f2f2f2;
     }
-    table.items-table tbody tr:nth-child(even) {
-        background: #fafafa;
-    }
-    .c-num   { width: 30px;  text-align: center; color: #777; }
+    .c-num   { width: 30px;  text-align: center; }
     .c-name  { text-align: left; }
-    .c-unit  { width: 60px;  text-align: center; color: #555; }
+    .c-unit  { width: 60px;  text-align: center; }
     .c-price { width: 90px;  text-align: right; }
     .c-qty   { width: 70px;  text-align: center; }
-    .c-sum   { width: 100px; text-align: right; font-weight: 600; }
+    .c-sum   { width: 100px; text-align: right; }
 
-    .total-label { text-align: right; font-weight: bold; border-top: 1.5px solid #999; }
-    .total-sum { font-weight: bold; border-top: 1.5px solid #999; }
+    .total-label { text-align: right; font-weight: bold; }
+    .total-sum { font-weight: bold; }
 
     .summary-line { margin: 5px 0; }
 
