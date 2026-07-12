@@ -109,6 +109,7 @@
         ($order->shippingAddress->first_name ?? '') . ' ' . ($order->shippingAddress->last_name ?? '')
     );
     $customerName = $addressName !== '' ? $addressName : ($order->user->name ?? 'Розничный покупатель');
+    $customerPhone = $order->shippingAddress->phone ?? $order->user->phone ?? '';
 @endphp
 
     <div class="title">
@@ -136,6 +137,12 @@
                 @endif
             </td>
         </tr>
+        @if($customerPhone)
+        <tr>
+            <td class="label">Телефон:</td>
+            <td>{{ $customerPhone }}</td>
+        </tr>
+        @endif
     </table>
 
     <table class="items-table">
@@ -226,5 +233,9 @@
             </td>
         </tr>
     </table>
+
+    @if($order->notes)
+    <p class="summary-line" style="margin-top: 15px;">Примечание: {{ $order->notes }}</p>
+    @endif
 </body>
 </html>
