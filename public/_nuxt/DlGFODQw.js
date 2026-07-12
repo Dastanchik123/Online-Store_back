@@ -1,0 +1,1 @@
+import{ah as i,K as a,M as e}from"./iibbQ_Vy.js";const u=i((s,r)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.hasPermission("cashier.access"))return e("/")}});export{u as default};
