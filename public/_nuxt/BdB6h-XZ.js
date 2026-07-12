@@ -1,0 +1,1 @@
+import{ah as e,K as a,M as i}from"./ad8ktTtn.js";const r=e((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin)return i("/")}});export{r as default};
