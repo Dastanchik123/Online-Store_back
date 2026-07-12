@@ -7,8 +7,10 @@ use Illuminate\Http\Request;
 
 class TrustProxies extends Middleware
 {
-    
-    protected $proxies;
+    // Fly.io терминирует TLS на своём edge-прокси и проксирует запросы
+    // к приложению по HTTP — без доверия ко всем прокси Laravel не видит
+    // X-Forwarded-Proto и генерирует ссылки (asset(), url()) со схемой http.
+    protected $proxies = '*';
 
     
     protected $headers =
