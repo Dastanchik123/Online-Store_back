@@ -31,5 +31,5 @@ EXPOSE 8080
 # нужна: report-запросы редкие, а два процесса на разных дисках не видели бы
 # один и тот же сгенерированный файл (Fly volume attach'ится к одной машине).
 CMD chown -R www-data:www-data /var/www/html/storage && \
-    (while true; do php artisan queue:work --tries=2 --timeout=180 --sleep=3 --stop-when-empty=false; sleep 2; done &) && \
+    (while true; do php artisan queue:work --tries=2 --timeout=180 --sleep=3; sleep 2; done &) && \
     php-fpm -D && nginx -g "daemon off;"
