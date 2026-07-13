@@ -19,11 +19,15 @@ class Handler extends ExceptionHandler
         'password_confirmation',
     ];
 
-    
+
     public function register()
     {
         $this->reportable(function (Throwable $e) {
-            
+            // Без SENTRY_LARAVEL_DSN в .env пакет не биндит 'sentry' в контейнер —
+            // на local/без DSN это no-op, ошибки просто уходят в storage/logs как раньше.
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
         });
     }
 }

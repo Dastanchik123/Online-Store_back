@@ -58,18 +58,26 @@ class SettingController extends Controller
         return $settings->toArray();
     }
 
+    // Ключи, которые реально редактируются через форму настроек
+    // (site_logo/payment_mbank_qr_image идут отдельно через uploadFile).
+    // Без whitelist сюда можно было записать любой ключ настроек системы.
+    private const EDITABLE_KEYS = [
+        'site_name', 'site_inn', 'currency_symbol', 'free_shipping_threshold',
+        'contact_phone', 'contact_email', 'contact_address',
+        'social_instagram', 'social_whatsapp', 'social_telegram',
+        'payment_contact', 'payment_recipient',
+        'pos_allow_debt', 'pos_allow_price_change', 'pos_hot_products_title',
+        'receipt_header', 'receipt_title', 'receipt_phone', 'receipt_footer',
+    ];
+
     public function update(Request $request)
     {
-                                                 
-        $settings = $request->input('settings'); 
+        $settings = $request->input('settings', []);
 
         foreach ($settings as $key => $value) {
-            
-            
-            
-            
-            
-            
+            if (! in_array($key, self::EDITABLE_KEYS, true)) {
+                continue;
+            }
 
             Setting::updateOrCreate(['key' => $key], ['value' => $value]);
         }

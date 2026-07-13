@@ -25,4 +25,11 @@ COPY nginx.conf /etc/nginx/sites-available/default
 
 EXPOSE 8080
 
-CMD chown -R www-data:www-data /var/www/html/storage && php-fpm -D && nginx -g "daemon off;"
+# queue:work в фоне того же контейнера/диска — тяжёлые PDF-отчёты (см.
+# App\Jobs\GenerateReportExport) генерируются здесь же, файл сразу доступен
+# и для web-процесса (download endpoint). Отдельная Fly-машина под воркер не
+# нужна: report-запросы редкие, а два процесса на разных дисках не видели бы
+# один и тот же сгенерированный файл (Fly volume attach'ится к одной машине).
+CMD chown -R www-data:www-data /var/www/html/storage && \
+    (while true; do php artisan queue:work --tries=2 --timeout=180 --sleep=3 --stop-when-empty=false; sleep 2; done &) && \
+    php-fpm -D && nginx -g "daemon off;"

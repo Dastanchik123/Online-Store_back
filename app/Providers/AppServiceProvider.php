@@ -70,5 +70,55 @@ class AppServiceProvider extends ServiceProvider
         \App\Models\Coupon::saved($notifyPos('coupons'));
         \App\Models\Coupon::deleted($notifyPos('coupons'));
         \App\Models\Setting::saved($notifyPos('settings'));
+
+        // Аудит-лог: кто и когда поменял цену/остаток товара или системную
+        // настройку. Хук на модели, а не в контроллере — ловит вообще все
+        // пути изменения (продажа, приход, ручное редактирование, tinker),
+        // а не только один конкретный endpoint.
+        $auditProductFields = ['price', 'sale_price', 'purchase_price', 'stock_quantity'];
+        \App\Models\Product::updated(function ($product) use ($auditProductFields) {
+            $changes = array_intersect_key($product->getChanges(), array_flip($auditProductFields));
+            if (empty($changes)) {
+                return;
+            }
+            $old = [];
+            foreach (array_keys($changes) as $field) {
+                $old[$field] = $product->getOriginal($field);
+            }
+            $this->writeAuditLog('product.updated', $product, $old, $changes);
+        });
+
+        \App\Models\Setting::saved(function ($setting) {
+            if ($setting->wasRecentlyCreated) {
+                $this->writeAuditLog('setting.created', $setting, null, ['key' => $setting->key, 'value' => $setting->value]);
+                return;
+            }
+            if (! $setting->wasChanged('value')) {
+                return;
+            }
+            $this->writeAuditLog(
+                'setting.updated',
+                $setting,
+                ['key' => $setting->key, 'value' => $setting->getOriginal('value')],
+                ['key' => $setting->key, 'value' => $setting->value]
+            );
+        });
+    }
+
+    private function writeAuditLog(string $action, $model, $old, $new): void
+    {
+        try {
+            \App\Models\AuditLog::create([
+                'user_id'        => auth()->id(),
+                'action'         => $action,
+                'auditable_type' => get_class($model),
+                'auditable_id'   => $model->id,
+                'old_values'     => $old,
+                'new_values'     => $new,
+                'ip'             => request()->ip(),
+            ]);
+        } catch (\Throwable $e) {
+            // Таблица audit_logs могла ещё не смигрироваться (свежий install) — не роняем основную операцию
+        }
     }
 }

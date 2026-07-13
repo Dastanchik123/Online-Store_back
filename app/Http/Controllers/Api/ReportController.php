@@ -78,33 +78,11 @@ class ReportController extends Controller
 
     public function products(Request $request)
     {
-        // dompdf на полном каталоге (1000+ строк) не влезает в дефолтные
-        // 128M / 30s — машина имеет 1 ГБ, поднимаем лимиты точечно
-        ini_set('memory_limit', '512M');
-        set_time_limit(120);
-
-        $query = Product::query()->with('category:id,name');
-
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-        if ($request->filled('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
-        if ($request->filled('in_stock')) {
-            $query->where('in_stock', $request->boolean('in_stock'));
-        }
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%");
-            });
-        }
-
-        $products = $query->orderBy('name')->get();
-
-        $pdf = Pdf::loadView('pdf.products', ['products' => $products, 'settings' => $this->getReceiptSettings()]);
-        return $pdf->download("products_report.pdf");
+        $pdf = (new \App\Support\ReportExportService())->productsPdf($request->query());
+        return response($pdf, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="products_report.pdf"',
+        ]);
     }
 
     public function productsExcel(Request $request)
@@ -150,65 +128,11 @@ class ReportController extends Controller
 
     public function debtsPdf(Request $request)
     {
-        $query = \App\Models\CustomerDebt::with(['user', 'order.items.product']);
-
-        if ($request->filled('status') && $request->status !== 'all') {
-            if ($request->status === 'active') {
-                $query->whereIn('status', ['active', 'partial']);
-            } else {
-                $query->where('status', $request->status);
-            }
-        }
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->whereHas('user', function ($sq) use ($search) {
-                    $sq->where('name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%");
-                })
-                    ->orWhere('order_id', 'like', "%{$search}%");
-            });
-        }
-
-        $debts          = $query->get();
-        $isGrouped      = $request->boolean('isGrouped');
-        $expandedGroups = $request->get('expandedGroups', []);
-
-        $data = [
-            'debts'          => $debts,
-            'isGrouped'      => $isGrouped,
-            'expandedGroups' => $expandedGroups,
-            'groupedDebts'   => [],
-            'title'          => 'БИЗНЕС-ОТЧЕТ: ДЕБИТОРСКАЯ ЗАДОЛЖЕННОСТЬ',
-            'date'           => date('d.m.Y H:i'),
-            'settings'       => $this->getReceiptSettings(),
-        ];
-
-        if ($isGrouped) {
-            $grouped = [];
-            foreach ($debts as $debt) {
-                $userName = $debt->user->name ?? 'Гость';
-                $userId   = $debt->user_id ?? ('guest-' . $userName);
-                if (! isset($grouped[$userId])) {
-                    $grouped[$userId] = [
-                        'user'             => $debt->user,
-                        'debts'            => [],
-                        'total_amount'     => 0,
-                        'paid_amount'      => 0,
-                        'remaining_amount' => 0,
-                    ];
-                }
-                $grouped[$userId]['debts'][]           = $debt;
-                $grouped[$userId]['total_amount']     += $debt->total_amount;
-                $grouped[$userId]['paid_amount']      += $debt->paid_amount;
-                $grouped[$userId]['remaining_amount'] += $debt->remaining_amount;
-            }
-            $data['groupedDebts'] = $grouped;
-        }
-
-        $pdf = Pdf::loadView('pdf.debts', $data);
-        return $pdf->download("debts_report_" . date('Y-m-d') . ".pdf");
+        $pdf = (new \App\Support\ReportExportService())->debtsPdf($request->query());
+        return response($pdf, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="debts_report_' . date('Y-m-d') . '.pdf"',
+        ]);
     }
 
     public function debtsExcel(Request $request)

@@ -24,8 +24,14 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\WishlistController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+// Весь /api уже под общим throttle:api (60/мин на юзера или IP, см.
+// RouteServiceProvider::configureRateLimiting) — этого достаточно для
+// публичного каталога. Для /login и /register этого мало: 60 попыток пароля
+// в минуту это по сути отсутствие защиты от подбора, поэтому лимит строже.
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+});
 
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
@@ -117,6 +123,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('reports/debts-excel', [ReportController::class, 'debtsExcel']);
         Route::get('reports/products/{product}/barcode', [ReportController::class, 'barcode']);
 
+        // Асинхронная генерация тяжёлых PDF-отчётов (полный каталог/долги) через очередь
+        Route::post('reports/exports', [\App\Http\Controllers\Api\ReportExportController::class, 'store']);
+        Route::get('reports/exports/{uuid}', [\App\Http\Controllers\Api\ReportExportController::class, 'show']);
+        Route::get('reports/exports/{uuid}/download', [\App\Http\Controllers\Api\ReportExportController::class, 'download']);
+
         Route::get('/blog-admin/{id}', [BlogController::class, 'adminShow']);
         Route::apiResource('blog-admin', BlogController::class)
             ->except(['index', 'show'])
@@ -124,6 +135,8 @@ Route::middleware('auth:sanctum')->group(function () {
             ->parameters(['blog-admin' => 'post']);
 
         Route::middleware('admin')->group(function () {
+            Route::get('/audit-logs', [\App\Http\Controllers\Api\AuditLogController::class, 'index']);
+
             Route::get('/settings', [SettingController::class, 'index']);
             Route::post('/settings', [SettingController::class, 'update']);
             Route::post('/settings/upload-file', [SettingController::class, 'uploadFile']);

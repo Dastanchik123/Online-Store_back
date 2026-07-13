@@ -3,13 +3,16 @@
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/auth'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => [
+    'allowed_origins' => array_values(array_filter([
         'http://192.168.2.176:3000',
         'http://localhost:3000',
         'https://kurulush-store.vercel.app',
         'https://online-store-hyu-ta.fly.dev',
-        env('CORS_ALLOWED_ORIGINS', '*'),
-    ],
+        // Без явного значения переменной — origin не добавляется (раньше тут был
+        // fallback на '*', который вместе с supports_credentials открывал API
+        // любому сайту, если переменную забыли выставить на новом деплое)
+        env('CORS_ALLOWED_ORIGINS'),
+    ])),
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],

@@ -13,18 +13,14 @@ class ReviewController extends Controller
     
     public function index(Request $request)
     {
-        $query = Review::query()->with('user', 'product');
+        // Роут публичный (без auth:sanctum, см. routes/api.php) — Auth::user()
+        // здесь недоступен, поэтому не пытаемся различать "своё"/staff, а просто
+        // отдаём только одобренные отзывы по товару (единственный реальный кейс
+        // использования — фронт не вызывает ни user_id, ни is_approved).
+        $query = Review::query()->with('user', 'product')->where('is_approved', true);
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->product_id);
-        }
-
-        if ($request->has('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        if ($request->has('is_approved')) {
-            $query->where('is_approved', $request->boolean('is_approved'));
         }
 
         $perPage = $request->get('per_page', 15);

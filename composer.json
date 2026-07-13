@@ -19,7 +19,8 @@
         "maatwebsite/excel": "^3.1",
         "phpoffice/phpspreadsheet": "^1.12",
         "picqer/php-barcode-generator": "^2.4",
-        "pusher/pusher-php-server": "^7.2"
+        "pusher/pusher-php-server": "^7.2",
+        "sentry/sentry-laravel": "^4.26"
     },
     "require-dev": {
         "facade/ignition": "^2.5",
