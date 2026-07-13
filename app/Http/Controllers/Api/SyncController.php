@@ -24,7 +24,7 @@ class SyncController extends Controller
 
         $categories = Category::when($since, function($q) use ($since) {
             return $q->where('updated_at', '>', $since);
-        })->get();
+        })->orderByRaw('LOWER(name) asc')->get();
 
         $products = Product::when($since, function($q) use ($since) {
             return $q->where('updated_at', '>', $since);

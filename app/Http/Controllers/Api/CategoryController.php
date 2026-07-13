@@ -29,14 +29,8 @@ class CategoryController extends Controller
                     $query->where('is_active', $request->boolean('is_active'));
                 }
 
-                // order_by=name — алфавитный порядок (для админ-списка
-                // категорий); по умолчанию — sort_order, которым управляет
-                // ручная сортировка витрины (не меняем поведение сайта)
-                if ($request->get('order_by') === 'name') {
-                    $query->orderByRaw('LOWER(name) asc');
-                } else {
-                    $query->orderBy('sort_order');
-                }
+                // Категории всегда отдаются в алфавитном порядке
+                $query->orderByRaw('LOWER(name) asc');
 
                 return $query->with('parent', 'children')->get()->toArray();
             }
