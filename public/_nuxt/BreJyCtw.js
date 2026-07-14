@@ -1,1 +1,0 @@
-import{_ as t,o as a,c,a9 as o}from"./cSWJeYIT.js";const s={},n={class:"auth-layout"};function r(e,_){return a(),c("div",n,[o(e.$slots,"default",{},void 0,!0)])}const l=t(s,[["render",r],["__scopeId","data-v-57037ccb"]]);export{l as default};
