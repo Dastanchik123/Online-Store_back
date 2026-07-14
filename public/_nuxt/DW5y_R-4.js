@@ -1,0 +1,1 @@
+import{aj as i,K as a,M as e}from"./DVct-JyE.js";const u=i((o,r)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return e("/auth/login");if(!t.hasPermission("orders.view"))return e("/")}});export{u as default};
