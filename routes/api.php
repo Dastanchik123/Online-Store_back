@@ -167,6 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/cart/items/{itemId}', [CartController::class, 'updateItem']);
     Route::delete('/cart/items/{itemId}', [CartController::class, 'removeItem']);
     Route::delete('/cart', [CartController::class, 'clear']);
+    Route::post('/cart/checkout-qr', [CartController::class, 'checkoutQr']);
 
     Route::get('/addresses', [AddressController::class, 'index']);
     Route::post('/addresses', [AddressController::class, 'store']);
@@ -195,6 +196,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/pos/staff', [\App\Http\Controllers\Api\PosController::class, 'getStaff']);
     Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'getAllProducts']);
     Route::post('/pos/sales/{id}/confirm', [\App\Http\Controllers\Api\PosController::class, 'confirmFinance']);
+    Route::post('/pos/scan-checkout', [\App\Http\Controllers\Api\PosController::class, 'scanCheckout'])->middleware('staff');
 
     // Sync Routes for Offline POS
     Route::prefix('sync')->group(function () {

@@ -8,6 +8,7 @@ use App\Models\CartItem;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 
 class CartController extends Controller
 {
@@ -126,13 +127,38 @@ class CartController extends Controller
         ]);
     }
 
-    
+
     public function clear()
     {
         $cart = $this->getOrCreateCart();
         $cart->items()->delete();
 
         return response()->json(['message' => 'Cart cleared']);
+    }
+
+
+    // QR для передачи корзины на кассу: токен — это подписанная ссылка на
+    // cart_id с TTL, сами товары нигде дополнительно не сохраняются —
+    // касса при сканировании читает актуальное содержимое той же корзины.
+    public function checkoutQr()
+    {
+        $cart = $this->getOrCreateCart();
+        $cart->load('items');
+
+        if ($cart->items->isEmpty()) {
+            return response()->json(['message' => 'Корзина пуста'], 422);
+        }
+
+        $expiresAt = now()->addMinutes(20);
+        $token = Crypt::encryptString(json_encode([
+            'cart_id' => $cart->id,
+            'exp'     => $expiresAt->timestamp,
+        ]));
+
+        return response()->json([
+            'token'      => $token,
+            'expires_at' => $expiresAt->toIso8601String(),
+        ]);
     }
 }
 

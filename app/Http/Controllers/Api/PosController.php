@@ -2,12 +2,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Cart;
 use App\Models\CustomerDebt;
 use App\Models\FinancialTransaction;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 
 class PosController extends Controller
@@ -310,5 +313,54 @@ class PosController extends Controller
     {
         $staff = \App\Models\User::whereIn('role', ['admin', 'purchaser', 'cashier'])->get(['id', 'name', 'role']);
         return response()->json($staff);
+    }
+
+    // Покупатель собрал корзину сканером на /tsd и получил QR (см.
+    // CartController::checkoutQr). Здесь касса читает актуальное содержимое
+    // той же корзины по cart_id из токена — и сразу забирает товары
+    // (очищает корзину), чтобы повторный скан того же QR не задвоил продажу.
+    public function scanCheckout(Request $request)
+    {
+        $request->validate(['token' => 'required|string']);
+
+        try {
+            $payload = json_decode(Crypt::decryptString($request->token), true);
+        } catch (DecryptException $e) {
+            return response()->json(['message' => 'QR-код недействителен'], 422);
+        }
+
+        if (! is_array($payload) || empty($payload['cart_id']) || empty($payload['exp'])) {
+            return response()->json(['message' => 'QR-код повреждён'], 422);
+        }
+
+        if ($payload['exp'] < now()->timestamp) {
+            return response()->json(['message' => 'QR-код истёк — попросите покупателя пересканировать товары'], 410);
+        }
+
+        $cart = Cart::with('items.product')->find($payload['cart_id']);
+        if (! $cart || $cart->items->isEmpty()) {
+            return response()->json(['message' => 'Корзина пуста или уже использована'], 404);
+        }
+
+        $items = $cart->items
+            ->filter(fn ($item) => $item->product && $item->product->is_active)
+            ->map(function ($item) {
+                $product = $item->product;
+                return [
+                    'product_id'     => $product->id,
+                    'sku'            => $product->sku,
+                    'name'           => $product->name,
+                    'price'          => $product->final_price,
+                    'quantity'       => min($item->quantity, max($product->stock_quantity, 0)),
+                    'stock_quantity' => $product->stock_quantity,
+                    'image_url'      => $product->image_url,
+                ];
+            })
+            ->filter(fn ($item) => $item['quantity'] > 0)
+            ->values();
+
+        $cart->items()->delete();
+
+        return response()->json(['items' => $items]);
     }
 }
