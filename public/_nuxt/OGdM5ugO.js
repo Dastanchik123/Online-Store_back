@@ -1,1 +1,0 @@
-import{a4 as e,W as a,L as i}from"./CA2bVQvi.js";const r=e((o,u)=>{const t=a();t.isAuthenticated||t.initAuth();{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin)return i("/")}});export{r as default};
