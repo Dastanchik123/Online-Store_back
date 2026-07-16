@@ -5,7 +5,11 @@ return [
     'allowed_methods' => ['*'],
     'allowed_origins' => array_values(array_filter([
         'http://192.168.2.176:3000',
+        'https://192.168.2.176:3000',
+        'http://192.168.2.183:3000',
+        'https://192.168.2.183:3000',
         'http://localhost:3000',
+        'https://localhost:3000',
         'https://kurulush-store.vercel.app',
         'https://online-store-hyu-ta.fly.dev',
         // Без явного значения переменной — origin не добавляется (раньше тут был
