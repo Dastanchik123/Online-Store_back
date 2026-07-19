@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Редактор этикеток и ценников</title>
+<script src="/vendor/JsBarcode.all.min.js"></script>
+<style>
+  :root{
+    --accent:#2f6fed;
+    --accent-dark:#1f56c4;
+    --bg:#f2f4f8;
+    --panel:#ffffff;
+    --border:#dde2ea;
+    --text:#1b2333;
+    --muted:#7a8296;
+    --danger:#e0453f;
+    --ok:#1f9d55;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    font-size:13px;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    overflow:hidden;
+  }
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:1px solid var(--border);
+    background:#fff;
+    color:var(--text);
+    border-radius:6px;
+    padding:6px 10px;
+    font-size:12.5px;
+    transition:background .12s, border-color .12s;
+  }
+  button:hover{background:#eef2fb;border-color:#c7d2e6;}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  button.primary:hover{background:var(--accent-dark);}
+  button.danger{color:var(--danger);}
+  button.danger:hover{background:#fdeceb;border-color:#f3b9b6;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.icon-btn{padding:6px 8px;}
+  input[type=text],input[type=number],input[type=date],select,textarea{
+    font-family:inherit;
+    font-size:12.5px;
+    padding:6px 8px;
+    border:1px solid var(--border);
+    border-radius:6px;
+    background:#fff;
+    color:var(--text);
+    width:100%;
+  }
+  textarea{resize:vertical;min-height:44px;}
+  label.field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--muted);margin-bottom:8px;}
+  label.field > span{font-weight:600;color:var(--text);}
+  .row{display:flex;gap:8px;}
+  .row > *{flex:1;min-width:0;}
+  .checkbox-row{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px;cursor:pointer;}
+  .checkbox-row input{width:auto;}
+  hr.sep{border:none;border-top:1px solid var(--border);margin:10px 0;}
+
+  /* top bar */
+  #topbar{
+    display:flex;align-items:center;gap:14px;
+    padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  #topbar h1{font-size:15px;margin:0;font-weight:700;white-space:nowrap;}
+  #tabs{display:flex;gap:4px;}
+  #tabs button{border-radius:6px;padding:7px 14px;}
+  #tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  #topbar .spacer{flex:1;}
+
+  /* main layout */
+  #view-editor{display:none;flex:1;min-height:0;}
+  #view-editor.active{display:flex;}
+  .col{background:var(--panel);overflow-y:auto;}
+  #sidebar-left{width:250px;border-right:1px solid var(--border);flex-shrink:0;padding:12px;}
+  #sidebar-right{width:280px;border-left:1px solid var(--border);flex-shrink:0;padding:12px;}
+  #canvas-area{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;padding:20px;overflow:auto;background:
+    linear-gradient(#e9edf4,#e9edf4);}
+  #canvas-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;justify-content:center;}
+  #canvas-wrap{padding:40px;}
+  #canvas{
+    position:relative;background:#fff;box-shadow:0 2px 18px rgba(20,30,60,.18);
+    transform-origin: top left;
+  }
+  #canvas.show-grid{
+    background-image:
+      linear-gradient(to right, rgba(47,111,237,.14) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(47,111,237,.14) 1px, transparent 1px);
+  }
+  .label-el{
+    position:absolute;
+    overflow:hidden;
+    display:flex;
+    cursor:move;
+    user-select:none;
+    line-height:1.1;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .label-el.align-left{justify-content:flex-start;text-align:left;}
+  .label-el.align-center{justify-content:center;text-align:center;}
+  .label-el.align-right{justify-content:flex-end;text-align:right;}
+  .label-el .inner{width:100%;}
+  .label-el.selected{outline:1.4px dashed var(--accent);}
+  .label-el.type-frame{background:transparent;}
+  .handle{
+    position:absolute;width:9px;height:9px;background:var(--accent);border:1px solid #fff;
+    border-radius:2px;z-index:50;
+  }
+  .h-nw{left:-5px;top:-5px;cursor:nwse-resize;}
+  .h-ne{right:-5px;top:-5px;cursor:nesw-resize;}
+  .h-sw{left:-5px;bottom:-5px;cursor:nesw-resize;}
+  .h-se{right:-5px;bottom:-5px;cursor:nwse-resize;}
+
+  h3.panel-title{font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 10px;}
+  .tpl-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;}
+  .tpl-item{
+    display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:6px;cursor:pointer;
+    border:1px solid transparent;
+  }
+  .tpl-item:hover{background:#f1f4fa;}
+  .tpl-item.active{background:#e7eefd;border-color:#c3d3f8;}
+  .tpl-item .name{flex:1;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tpl-item .meta{font-size:10.5px;color:var(--muted);}
+  .role-badge{font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap;}
+  .tpl-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+  .tpl-actions button{flex:1;}
+
+  .elbtn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .elbtn-grid button{text-align:left;padding:8px 8px;font-size:11.8px;display:flex;flex-direction:column;gap:2px;}
+  .elbtn-grid button .ic{font-size:15px;}
+
+  .layer-list{display:flex;flex-direction:column;gap:3px;margin-top:8px;max-height:180px;overflow-y:auto;}
+  .layer-item{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:5px;font-size:11.5px;cursor:pointer;}
+  .layer-item:hover{background:#f1f4fa;}
+  .layer-item.active{background:#e7eefd;}
+  .layer-item .lbl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  .empty-hint{color:var(--muted);font-size:12px;text-align:center;padding:30px 10px;}
+
+  .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+
+  /* settings view */
+  #view-settings{display:none;flex:1;min-height:0;overflow-y:auto;padding:20px;}
+  #view-settings.active{display:flex;flex-direction:column;align-items:center;}
+  #view-settings .card{width:100%;max-width:640px;}
+  #view-settings h2{font-size:15px;margin:0 0 4px;}
+  #view-settings .desc{color:var(--muted);font-size:11.5px;margin-bottom:14px;}
+
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:#c6cddb;border-radius:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  .toast{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    background:#1b2333;color:#fff;padding:9px 16px;border-radius:8px;font-size:12.5px;
+    box-shadow:0 4px 16px rgba(0,0,0,.25); z-index:999; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:transparent;
+    display:flex;align-items:center;justify-content:center;z-index:2000;
+  }
+  .modal-box{
+    background:#fff;border-radius:12px;padding:20px;width:320px;
+    box-shadow:0 12px 40px rgba(0,0,0,.28);
+  }
+  .modal-title{font-weight:700;font-size:14px;margin-bottom:8px;}
+  .modal-message{font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.4;}
+  .modal-input{margin-bottom:16px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🏷️ Редактор этикеток</h1>
+  <div id="tabs">
+    <button data-tab="editor" class="active">Редактор</button>
+    <button data-tab="settings">Настройки</button>
+  </div>
+  <div class="spacer"></div>
+  <span id="tpl-name-display" style="font-size:12px;color:var(--muted)"></span>
+</div>
+
+<!-- ===================== EDITOR TAB ===================== -->
+<div id="view-editor" class="active">
+  <div id="sidebar-left" class="col">
+    <h3 class="panel-title">Шаблоны</h3>
+    <div class="tpl-list" id="tplList"></div>
+    <div class="tpl-actions">
+      <button id="btnNewTpl">➕ Создать</button>
+      <button id="btnDupTpl">⧉ Дублировать</button>
+      <button id="btnRenameTpl">✎ Переименовать</button>
+      <button id="btnDelTpl" class="danger">🗑 Удалить</button>
+    </div>
+    <div class="tpl-actions">
+      <button id="btnExportTpl">⬇ Экспорт JSON</button>
+      <button id="btnImportTpl">⬆ Импорт JSON</button>
+      <input type="file" id="fileImportTpl" accept=".json" style="display:none">
+    </div>
+    <label class="field"><span>Использовать этот шаблон как</span>
+      <select id="tplRole">
+        <option value="none">— не используется для печати —</option>
+        <option value="price_tag">Ценник (обычная печать)</option>
+        <option value="barcode">Штрихкод-этикетка</option>
+      </select>
+    </label>
+    <div style="font-size:10.5px;color:var(--muted);margin:-4px 0 8px;">
+      Шаблон с ролью автоматически применяется на кассе и при печати — без отдельного сохранения.
+    </div>
+    <hr class="sep">
+    <h3 class="panel-title">Размер этикетки</h3>
+    <div class="row">
+      <label class="field"><span>Ширина, мм</span><input type="number" id="tplW" min="10" max="300" step="0.5"></label>
+      <label class="field"><span>Высота, мм</span><input type="number" id="tplH" min="10" max="300" step="0.5"></label>
+    </div>
+    <label class="field"><span>Пресет</span>
+      <select id="tplPreset">
+        <option value="">— свой размер —</option>
+        <option value="58x40">58×40 мм</option>
+        <option value="58x30">58×30 мм</option>
+        <option value="60x40">60×40 мм</option>
+        <option value="40x30">40×30 мм</option>
+        <option value="100x50">100×50 мм</option>
+        <option value="100x150">100×150 мм</option>
+      </select>
+    </label>
+    <hr class="sep">
+    <h3 class="panel-title">Добавить элемент</h3>
+    <div class="elbtn-grid" id="elBtnGrid"></div>
+    <hr class="sep">
+    <h3 class="panel-title">Слои</h3>
+    <div class="layer-list" id="layerList"></div>
+  </div>
+
+  <div id="canvas-area">
+    <div id="canvas-toolbar">
+      <label class="mini-field">Предпросмотр товара
+        <select id="previewProductSelect" style="width:200px"></select>
+      </label>
+      <button id="zoomOut">－</button>
+      <span id="zoomLabel" style="font-size:12px;width:44px;text-align:center;">100%</span>
+      <button id="zoomIn">＋</button>
+      <label class="checkbox-row" style="margin:0"><input type="checkbox" id="chkGrid" checked> Сетка</label>
+      <label class="checkbox-row" style="margin:0"><input type="checkbox" id="chkSnap" checked> Привязка</label>
+    </div>
+    <div id="canvas-wrap">
+      <div id="canvas"></div>
+    </div>
+  </div>
+
+  <div id="sidebar-right" class="col">
+    <h3 class="panel-title">Свойства элемента</h3>
+    <div id="propsPanel"><div class="empty-hint">Выберите элемент на холсте или добавьте новый слева</div></div>
+  </div>
+</div>
+
+<!-- ===================== SETTINGS TAB ===================== -->
+<div id="view-settings">
+  <div class="card">
+    <h2>Данные по умолчанию</h2>
+    <div class="desc">Подставляются в новые элементы и товары, если своё значение не указано.</div>
+    <div class="row">
+      <label class="field"><span>Название магазина</span><input type="text" id="setStoreName"></label>
+      <label class="field"><span>Валюта</span>
+        <select id="setCurrency">
+          <option value="₽">₽ — рубль</option>
+          <option value="₴">₴ — гривна</option>
+          <option value="₸">₸ — тенге</option>
+          <option value="сом">сом — сом</option>
+          <option value="€">€ — евро</option>
+          <option value="$">$ — доллар</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Страна-производитель по умолчанию</span><input type="text" id="setCountry"></label>
+      <label class="field"><span>Формат штрих-кода по умолчанию</span>
+        <select id="setBarcodeFormat">
+          <option value="EAN13">EAN-13</option>
+          <option value="EAN8">EAN-8</option>
+          <option value="CODE128">Code-128</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Холст и сетка</h2>
+    <div class="row">
+      <label class="field"><span>Шаг сетки, мм</span><input type="number" id="setGridSize" min="0.5" max="20" step="0.5"></label>
+      <label class="field"><span>Привязка к сетке по умолчанию</span>
+        <select id="setSnapDefault"><option value="1">Включена</option><option value="0">Выключена</option></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Печать листа A4</h2>
+    <div class="row">
+      <label class="field"><span>Колонок по умолчанию</span><input type="number" id="setPrintCols" min="1" max="12"></label>
+      <label class="field"><span>Поля листа по умолчанию, мм</span><input type="number" id="setPrintMargin" min="0" max="30" step="0.5"></label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Промежуток X по умолчанию, мм</span><input type="number" id="setPrintGapX" min="0" max="30" step="0.5"></label>
+      <label class="field"><span>Промежуток Y по умолчанию, мм</span><input type="number" id="setPrintGapY" min="0" max="30" step="0.5"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Резервное копирование</h2>
+    <div class="desc">Полный экспорт/импорт всех данных приложения: шаблоны, товары и настройки.</div>
+    <div class="row">
+      <button id="btnExportAll">⬇ Экспорт всех данных (JSON)</button>
+      <button id="btnImportAll">⬆ Импорт всех данных</button>
+      <input type="file" id="fileImportAll" accept=".json" style="display:none">
+    </div>
+    <hr class="sep">
+    <button id="btnResetAll" class="danger">Сбросить всё к демо-примеру</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Свой модальный диалог вместо window.prompt()/confirm() — нативные
+     блокирующие диалоги ненадёжны во вложенных iframe (в частности, внутри
+     Electron-приложения prompt()/confirm() из дочернего фрейма может молча
+     не открываться, и клик выглядит так, будто ничего не происходит). -->
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-message" id="modalMessage"></div>
+    <input type="text" id="modalInput" class="modal-input" style="display:none;">
+    <div class="modal-actions">
+      <button id="modalCancelBtn">Отмена</button>
+      <button id="modalOkBtn" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ===================== УТИЛИТЫ ===================== */
+let _uidCounter = 0;
+function uid(){ _uidCounter++; return 'el_'+Date.now().toString(36)+'_'+_uidCounter; }
+
+function clamp(v,min,max){ return Math.min(max, Math.max(min, v)); }
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// Замена window.prompt()/confirm(): та же роль, но не полагается на нативный
+// диалог браузера (ненадёжен во вложенных iframe, в частности в Electron).
+function showModal({title, message, withInput, defaultValue}){
+  return new Promise((resolve)=>{
+    const overlay = document.getElementById('modalOverlay');
+    const titleEl = document.getElementById('modalTitle');
+    const msgEl = document.getElementById('modalMessage');
+    const inputEl = document.getElementById('modalInput');
+    const okBtn = document.getElementById('modalOkBtn');
+    const cancelBtn = document.getElementById('modalCancelBtn');
+
+    titleEl.textContent = title || '';
+    titleEl.style.display = title ? '' : 'none';
+    msgEl.textContent = message || '';
+    msgEl.style.display = message ? '' : 'none';
+    inputEl.style.display = withInput ? '' : 'none';
+    if(withInput) inputEl.value = defaultValue || '';
+
+    overlay.style.display = 'flex';
+    if(withInput){ inputEl.focus(); inputEl.select(); } else { okBtn.focus(); }
+
+    function cleanup(result){
+      overlay.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      inputEl.removeEventListener('keydown', onKeydown);
+      overlay.removeEventListener('mousedown', onOverlayClick);
+      resolve(result);
+    }
+    function onOk(){ cleanup(withInput ? (inputEl.value.trim() || null) : true); }
+    function onCancel(){ cleanup(withInput ? null : false); }
+    function onKeydown(ev){
+      if(ev.key === 'Enter'){ ev.preventDefault(); onOk(); }
+      else if(ev.key === 'Escape'){ ev.preventDefault(); onCancel(); }
+    }
+    function onOverlayClick(ev){ if(ev.target === overlay) onCancel(); }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    inputEl.addEventListener('keydown', onKeydown);
+    overlay.addEventListener('mousedown', onOverlayClick);
+  });
+}
+function showPromptModal(title, defaultValue){ return showModal({title, withInput:true, defaultValue}); }
+function showConfirmModal(message){ return showModal({message, withInput:false}); }
+
+function setNested(obj, path, value){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i=0;i<parts.length-1;i++){ cur = cur[parts[i]]; }
+  cur[parts[parts.length-1]] = value;
+}
+function getNested(obj, path){
+  return path.split('.').reduce((o,k)=> (o==null? o : o[k]), obj);
+}
+
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function formatNumber(n){
+  n = Number(n)||0;
+  return n.toLocaleString('ru-RU', {minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits:2});
+}
+
+/* EAN-13 проверка контрольной цифры */
+function ean13CheckDigit(digits12){
+  let sum = 0;
+  for(let i=0;i<12;i++){ sum += Number(digits12[i]) * (i % 2 === 0 ? 1 : 3); }
+  return (10 - (sum % 10)) % 10;
+}
+function validateEAN13(code){
+  code = String(code||'').trim();
+  if(!/^\d{13}$/.test(code)) return {valid:false, reason:'Штрих-код EAN-13 должен содержать ровно 13 цифр'};
+  const check = ean13CheckDigit(code.slice(0,12));
+  if(String(check) !== code[12]) return {valid:false, reason:'Неверная контрольная цифра: ожидается '+check+', указано '+code[12]};
+  return {valid:true};
+}
+
+/* ===================== ХРАНЕНИЕ ===================== */
+const STORAGE_KEY = 'labelEditorApp_v1';
+
+function defaultSettings(){
+  return {
+    storeName: 'Мой магазин',
+    currency: '₽',
+    country: 'Россия',
+    barcodeFormat: 'EAN13',
+    gridSize: 2,
+    snapDefault: true,
+    printCols: 3,
+    printMargin: 8,
+    printGapX: 3,
+    printGapY: 3
+  };
+}
+
+function demoTemplate(){
+  const t = {
+    id: uid(),
+    name: 'Демо-шаблон 58×40',
+    width: 58,
+    height: 40,
+    role: 'none',
+    elements: []
+  };
+  t.elements.push(Object.assign(createElement('product_name'), {x:2,y:2,w:54,h:10, fontSize:3.6, align:'left', bold:true}));
+  t.elements.push(Object.assign(createElement('price'), {x:2,y:12,w:30,h:11, fontSize:7}));
+  t.elements.push(Object.assign(createElement('old_price'), {x:33,y:14.5,w:22,h:6, fontSize:3.6}));
+  t.elements.push(Object.assign(createElement('barcode'), {x:2,y:24,w:54,h:13}));
+  t.elements.push(Object.assign(createElement('store_name'), {x:2,y:0.5,w:30,h:3.5, fontSize:2.6, props:{text:'Мой магазин', useGlobal:true}}));
+  t.elements.push(Object.assign(createElement('date'), {x:44,y:0.5,w:12,h:3.5, fontSize:2.4, align:'right'}));
+  return t;
+}
+
+function demoProducts(){
+  return [
+    {id:uid(), name:'Молоко «Домик в деревне» 1л', price:89.90, oldPrice:0, barcode:'4607034393342', article:'A-1001', unit:'шт', unitPrice:89.90, country:'Россия', qty:2},
+    {id:uid(), name:'Шоколад Alpen Gold 90г', price:99.00, oldPrice:129.00, barcode:'4607034397005', article:'A-1002', unit:'шт', unitPrice:99.00, country:'Россия', qty:2},
+    {id:uid(), name:'Кофе растворимый Nescafe 95г', price:349.00, oldPrice:399.00, barcode:'7613036920001', article:'A-1003', unit:'шт', unitPrice:349.00, country:'Швейцария', qty:1}
+  ];
+}
+
+let state = {
+  templates: [],
+  activeTemplateId: null,
+  products: [],
+  settings: defaultSettings(),
+  selectedElementId: null,
+  zoom: 3.5, // px per mm on screen
+  activeTab: 'editor'
+};
+
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    templates: state.templates,
+    activeTemplateId: state.activeTemplateId,
+    products: state.products,
+    settings: state.settings
+  }));
+  scheduleParentSync();
+}
+
+// Если шаблону назначена роль (Ценник/Штрихкод), любое изменение в нём
+// само долетает до родительской страницы настроек через postMessage —
+// без отдельной кнопки "Сделать активным" и без риска забыть сохранить.
+let _parentSyncTimer = null;
+function scheduleParentSync(){
+  if(window.parent === window) return; // открыт не во фрейме — синхронизировать некуда
+  clearTimeout(_parentSyncTimer);
+  _parentSyncTimer = setTimeout(()=>{
+    const priceTagTpl = state.templates.find(t=>t.role==='price_tag') || null;
+    const barcodeTpl = state.templates.find(t=>t.role==='barcode') || null;
+    window.parent.postMessage({
+      source: 'label-editor',
+      priceTag: priceTagTpl ? JSON.parse(JSON.stringify(priceTagTpl)) : null,
+      barcode: barcodeTpl ? JSON.parse(JSON.stringify(barcodeTpl)) : null,
+      // Полный список шаблонов — чтобы на странице печати можно было выбрать
+      // ЛЮБОЙ из них вручную, а не только те, что помечены ролью.
+      allTemplates: JSON.parse(JSON.stringify(state.templates))
+    }, '*');
+  }, 700);
+}
+
+function load(){
+  let raw;
+  try{ raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); }catch(e){ raw = null; }
+  if(raw && raw.templates && raw.templates.length){
+    state.templates = raw.templates;
+    state.activeTemplateId = raw.activeTemplateId || raw.templates[0].id;
+    state.products = raw.products || [];
+    state.settings = Object.assign(defaultSettings(), raw.settings||{});
+  } else {
+    const t = demoTemplate();
+    state.templates = [t];
+    state.activeTemplateId = t.id;
+    state.products = demoProducts();
+  }
+}
+
+/* ===================== ОПРЕДЕЛЕНИЯ ЭЛЕМЕНТОВ ===================== */
+const ELEMENT_DEFS = {
+  product_name:  {label:'Название товара', icon:'📦'},
+  price:         {label:'Цена', icon:'💰'},
+  old_price:     {label:'Старая цена', icon:'🏷️'},
+  discount:      {label:'Скидка %', icon:'％'},
+  barcode:       {label:'Штрих-код', icon:'▮▯'},
+  store_name:    {label:'Название магазина', icon:'🏬'},
+  date:          {label:'Дата', icon:'📅'},
+  article:       {label:'Артикул', icon:'#'},
+  unit:          {label:'Ед. измерения', icon:'⚖️'},
+  country:       {label:'Страна', icon:'🌍'},
+  custom_text:   {label:'Свой текст', icon:'✎'},
+  line:          {label:'Линия', icon:'—'},
+  frame:         {label:'Рамка', icon:'▢'}
+};
+
+function createElement(type){
+  const base = {
+    id: uid(), type, x:5, y:5, w:20, h:8, rot:0,
+    fontSize:3.2, bold:false, align:'left', color:'#000000',
+    props:{}
+  };
+  switch(type){
+    case 'product_name': base.props = {field:'name'}; base.bold = true; base.fontSize=3.6; base.w=40; base.h=10; break;
+    case 'price': base.props = {currency: state.settings.currency, showKopecks:true}; base.fontSize=7; base.bold=true; base.w=28; base.h=11; break;
+    case 'old_price': base.props = {currency: state.settings.currency}; base.fontSize=3.6; base.w=20; base.h=6; break;
+    case 'discount': base.props = {format:'-{d}%'}; base.fontSize=4; base.bold=true; base.color='#d21f1f'; base.w=16; base.h=6; break;
+    case 'barcode': base.props = {format: state.settings.barcodeFormat, showDigits:true}; base.w=48; base.h=16; break;
+    case 'store_name': base.props = {useGlobal:true, text:state.settings.storeName}; base.fontSize=3; base.w=30; base.h=4; break;
+    case 'date': base.props = {mode:'auto', fixedDate:''}; base.fontSize=2.8; base.w=14; base.h=4; break;
+    case 'article': base.props = {prefix:'Арт: ', field:'article'}; base.fontSize=2.6; base.w=20; base.h=4; break;
+    case 'unit': base.props = {prefix:'', field:'unit'}; base.fontSize=2.6; base.w=24; base.h=4; break;
+    case 'country': base.props = {prefix:'Страна: ', field:'country'}; base.fontSize=2.6; base.w=24; base.h=4; break;
+    case 'custom_text': base.props = {text:'Текст'}; base.fontSize=3; base.w=24; base.h=6; break;
+    case 'line': base.props = {orientation:'horizontal', thickness:0.4, style:'solid'}; base.w=30; base.h=2; base.color='#000000'; break;
+    case 'frame': base.props = {thickness:0.4, style:'solid', radius:0}; base.w=40; base.h=20; base.color='#000000'; break;
+  }
+  return base;
+}
+
+/* ===================== ДОСТУП К ДАННЫМ ===================== */
+function activeTemplate(){
+  let t = state.templates.find(t=>t.id===state.activeTemplateId);
+  if(!t){
+    // activeTemplateId "протух" (устарел/битый импорт) — откатываемся на
+    // первый шаблон и СРАЗУ поправляем сам id, иначе список шаблонов слева
+    // продолжит подсвечивать не тот пункт, что реально открыт на холсте.
+    t = state.templates[0];
+    if(t) state.activeTemplateId = t.id;
+  }
+  return t;
+}
+function selectedElement(){
+  const t = activeTemplate();
+  if(!t) return null;
+  return t.elements.find(e=>e.id===state.selectedElementId) || null;
+}
+const SAMPLE_PRODUCT = {name:'Пример товара', price:199.90, oldPrice:249.90, barcode:'4600000000015', article:'DEMO-1', unit:'шт', unitPrice:199.90, country:'Россия', qty:1};
+function previewProduct(){
+  if(state.products.length){
+    const found = state.products.find(p=>p.id===state.previewProductId);
+    return found || state.products[0];
+  }
+  return SAMPLE_PRODUCT;
+}
+
+/* ===================== РЕНДЕР ЭЛЕМЕНТА (общий для холста и печати) ===================== */
+function computeDiscount(product){
+  const p = Number(product.price)||0, op = Number(product.oldPrice)||0;
+  if(!op || op<=p) return null;
+  return Math.round((1 - p/op) * 100);
+}
+
+function buildElementContentHTML(el, product){
+  const cur = state.settings.currency;
+  switch(el.type){
+    case 'product_name':
+      return escapeHtml(product.name || '');
+    case 'price': {
+      const val = Number(product.price)||0;
+      const c = el.props.currency || cur;
+      if(el.props.showKopecks){
+        const whole = Math.floor(val);
+        const kop = Math.round((val - whole)*100);
+        return `${whole}<span style="font-size:0.5em;vertical-align:top;">.${String(kop).padStart(2,'0')}</span> ${c}`;
+      }
+      return `${formatNumber(val)} ${c}`;
+    }
+    case 'old_price': {
+      const val = Number(product.oldPrice)||0;
+      if(!val) return '';
+      const c = el.props.currency || cur;
+      return `<span style="text-decoration:line-through;">${formatNumber(val)} ${c}</span>`;
+    }
+    case 'discount': {
+      const d = computeDiscount(product);
+      if(d==null) return '';
+      return escapeHtml((el.props.format||'-{d}%').replace('{d}', d));
+    }
+    case 'barcode':
+      return ''; // рисуется отдельно через SVG/JsBarcode
+    case 'store_name':
+      return escapeHtml(el.props.useGlobal ? state.settings.storeName : (el.props.text||''));
+    case 'date': {
+      if(el.props.mode === 'fixed' && el.props.fixedDate){
+        const d = new Date(el.props.fixedDate);
+        if(!isNaN(d)) return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+      }
+      const now = new Date();
+      return `${String(now.getDate()).padStart(2,'0')}.${String(now.getMonth()+1).padStart(2,'0')}.${now.getFullYear()}`;
+    }
+    case 'article':
+      return escapeHtml((el.props.prefix||'') + (product.article||''));
+    case 'unit': {
+      const up = Number(product.unitPrice)||0;
+      const u = product.unit || '';
+      return escapeHtml((el.props.prefix||'') + (up? formatNumber(up)+' '+cur+' / ' : '') + u);
+    }
+    case 'country':
+      return escapeHtml((el.props.prefix||'') + (product.country||''));
+    case 'custom_text':
+      return escapeHtml(el.props.text||'');
+    default:
+      return '';
+  }
+}
+
+// unitSuffix: 'px' with scale = px-per-mm (для холста) либо 'mm' со scale=1 (для печати)
+function renderLabelNode(template, product, scale, unitSuffix, opts){
+  opts = opts || {};
+  const wrap = document.createElement('div');
+  wrap.className = 'label-instance';
+  wrap.style.position = 'relative';
+  wrap.style.width = (template.width*scale)+unitSuffix;
+  wrap.style.height = (template.height*scale)+unitSuffix;
+  wrap.style.background = '#fff';
+  wrap.style.overflow = 'hidden';
+
+  template.elements.forEach(el=>{
+    const node = document.createElement('div');
+    node.className = 'label-el type-'+el.type+' align-'+el.align;
+    node.dataset.id = el.id;
+    node.style.left = (el.x*scale)+unitSuffix;
+    node.style.top = (el.y*scale)+unitSuffix;
+    node.style.width = (el.w*scale)+unitSuffix;
+    node.style.height = (el.h*scale)+unitSuffix;
+    node.style.fontSize = (el.fontSize*scale)+unitSuffix;
+    node.style.fontWeight = el.bold ? '700':'400';
+    node.style.color = el.color || '#000';
+    node.style.alignItems = (el.type==='price'||el.type==='old_price'||el.type==='discount') ? 'center' : 'flex-start';
+    if(el.rot){ node.style.transform = 'rotate('+el.rot+'deg)'; node.style.transformOrigin='center center'; }
+
+    if(opts.interactive && (el.type==='frame' || el.type==='line') && el.id !== state.selectedElementId){
+      // Рамка/линия — оформление, а не рабочая область: если растянуть её на
+      // весь ценник, она перехватывает клики по элементам под собой (текст,
+      // цену и т.д.). Пропускаем клики "сквозь", пока элемент не выбран через
+      // список "Слои" слева — там он остаётся доступен для выбора и правки.
+      node.style.pointerEvents = 'none';
+    }
+
+    if(el.type === 'line'){
+      node.style.display='block';
+      if(el.props.orientation === 'vertical'){
+        node.style.borderLeft = (el.props.thickness*scale)+unitSuffix+' '+el.props.style+' '+el.color;
+      } else {
+        node.style.borderTop = (el.props.thickness*scale)+unitSuffix+' '+el.props.style+' '+el.color;
+      }
+    } else if(el.type === 'frame'){
+      node.style.display='block';
+      node.style.border = (el.props.thickness*scale)+unitSuffix+' '+el.props.style+' '+el.color;
+      node.style.borderRadius = ((el.props.radius||0)*scale)+unitSuffix;
+    } else if(el.type === 'barcode'){
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns,'svg');
+      svg.style.width='100%'; svg.style.height='100%'; svg.style.display='block';
+      node.appendChild(svg);
+      const value = (product.barcode||'').toString().trim();
+      try{
+        if(!value) throw new Error('нет кода');
+        // Генерируем в условных единицах, привязанных к пропорциям блока (мм),
+        // а не к экранному масштабу — иначе при печати/зуме штрихи «плывут».
+        const UNITS_PER_MM = 12;
+        const targetW = el.w * UNITS_PER_MM;
+        const targetH = el.h * UNITS_PER_MM;
+        const barHeight = el.props.showDigits ? targetH*0.6 : targetH*0.86;
+        const baseOpts = {
+          format: el.props.format || 'EAN13',
+          displayValue: !!el.props.showDigits,
+          margin: Math.max(2, targetH*0.06),
+          fontOptions:'',
+          font:'monospace',
+          fontSize: Math.max(8, targetH*0.22),
+          textMargin:1,
+          height: barHeight,
+          width: 2
+        };
+        // 1-й проход — измеряем естественную ширину при толщине штриха 2
+        window.JsBarcode(svg, value, baseOpts);
+        const nativeW = parseFloat(svg.getAttribute('width'));
+        // 2-й проход — подгоняем толщину штриха так, чтобы код заполнял блок
+        // без растяжения (сохраняются пропорции штрихов, код остаётся читаемым)
+        const fitWidth = Math.max(0.6, 2 * (targetW / nativeW));
+        window.JsBarcode(svg, value, Object.assign({}, baseOpts, {width: fitWidth}));
+        const w = parseFloat(svg.getAttribute('width')), h = parseFloat(svg.getAttribute('height'));
+        if(w && h){ svg.setAttribute('viewBox','0 0 '+w+' '+h); svg.removeAttribute('width'); svg.removeAttribute('height'); svg.setAttribute('preserveAspectRatio','xMidYMid meet'); }
+      }catch(err){
+        svg.remove();
+        node.style.alignItems='center'; node.style.justifyContent='center';
+        node.style.border='1px dashed #c33'; node.style.color='#c33'; node.style.fontSize='9px';
+        node.textContent = 'Штрих-код: ошибка ('+(value?String(err):'нет кода')+')';
+      }
+    } else {
+      const inner = document.createElement('div');
+      inner.className = 'inner';
+      inner.innerHTML = buildElementContentHTML(el, product);
+      node.appendChild(inner);
+    }
+
+    if(opts.interactive){
+      if(el.id === state.selectedElementId) node.classList.add('selected');
+      node.addEventListener('mousedown', (ev)=> startDrag(ev, el));
+      if(el.id === state.selectedElementId){
+        ['nw','ne','sw','se'].forEach(pos=>{
+          const h = document.createElement('div');
+          h.className = 'handle h-'+pos;
+          h.addEventListener('mousedown', (ev)=>{ ev.stopPropagation(); startResize(ev, el, pos); });
+          node.appendChild(h);
+        });
+      }
+    }
+
+    wrap.appendChild(node);
+  });
+  return wrap;
+}
+
+/* ===================== ХОЛСТ: РЕНДЕР + ВЗАИМОДЕЙСТВИЕ ===================== */
+const canvasEl = document.getElementById('canvas');
+
+function renderCanvas(){
+  const t = activeTemplate();
+  if(!t){ canvasEl.innerHTML=''; return; }
+  document.getElementById('tpl-name-display').textContent = t.name+' · '+t.width+'×'+t.height+' мм';
+  canvasEl.innerHTML = '';
+  const node = renderLabelNode(t, previewProduct(), state.zoom, 'px', {interactive:true});
+  canvasEl.style.width = node.style.width;
+  canvasEl.style.height = node.style.height;
+  canvasEl.classList.toggle('show-grid', document.getElementById('chkGrid').checked);
+  const gridPx = state.settings.gridSize*state.zoom;
+  canvasEl.style.backgroundSize = gridPx+'px '+gridPx+'px';
+  while(node.firstChild) canvasEl.appendChild(node.firstChild);
+  renderLayerList();
+  renderProps();
+}
+
+function renderLayerList(){
+  const t = activeTemplate();
+  const list = document.getElementById('layerList');
+  list.innerHTML = '';
+  if(!t || !t.elements.length){ list.innerHTML = '<div class="empty-hint" style="padding:10px 0;">Нет элементов</div>'; return; }
+  t.elements.slice().reverse().forEach(el=>{
+    const def = ELEMENT_DEFS[el.type];
+    const row = document.createElement('div');
+    row.className = 'layer-item'+(el.id===state.selectedElementId?' active':'');
+    row.innerHTML = `<span>${def.icon}</span><span class="lbl">${def.label}</span>`;
+    row.addEventListener('click', ()=>{ state.selectedElementId = el.id; renderCanvas(); });
+    list.appendChild(row);
+  });
+}
+
+/* --- drag --- */
+let dragCtx = null;
+function pxPerMm(){
+  const t = activeTemplate();
+  const rect = canvasEl.getBoundingClientRect();
+  return rect.width / t.width;
+}
+function startDrag(ev, el){
+  ev.preventDefault();
+  state.selectedElementId = el.id;
+  renderCanvas();
+  const ppm = pxPerMm();
+  dragCtx = {mode:'move', el, startMouseX:ev.clientX, startMouseY:ev.clientY, startX:el.x, startY:el.y, ppm};
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+}
+function startResize(ev, el, handle){
+  ev.preventDefault();
+  state.selectedElementId = el.id;
+  const ppm = pxPerMm();
+  dragCtx = {mode:'resize', el, handle, startMouseX:ev.clientX, startMouseY:ev.clientY,
+    startX:el.x, startY:el.y, startW:el.w, startH:el.h, ppm};
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+}
+function snapVal(v){
+  if(!document.getElementById('chkSnap').checked) return v;
+  const g = state.settings.gridSize || 1;
+  return Math.round(v/g)*g;
+}
+function onDragMove(ev){
+  if(!dragCtx) return;
+  const t = activeTemplate();
+  const dxMm = (ev.clientX - dragCtx.startMouseX)/dragCtx.ppm;
+  const dyMm = (ev.clientY - dragCtx.startMouseY)/dragCtx.ppm;
+  const el = dragCtx.el;
+  if(dragCtx.mode === 'move'){
+    el.x = clamp(snapVal(dragCtx.startX + dxMm), 0, t.width - el.w);
+    el.y = clamp(snapVal(dragCtx.startY + dyMm), 0, t.height - el.h);
+  } else {
+    const h = dragCtx.handle;
+    let x=dragCtx.startX, y=dragCtx.startY, w=dragCtx.startW, hh=dragCtx.startH;
+    if(h.includes('e')) w = clamp(snapVal(dragCtx.startW + dxMm), 3, t.width - x);
+    if(h.includes('s')) hh = clamp(snapVal(dragCtx.startH + dyMm), 3, t.height - y);
+    if(h.includes('w')){
+      const nx = clamp(snapVal(dragCtx.startX + dxMm), 0, dragCtx.startX+dragCtx.startW-3);
+      w = dragCtx.startW + (dragCtx.startX - nx);
+      x = nx;
+    }
+    if(h.includes('n')){
+      const ny = clamp(snapVal(dragCtx.startY + dyMm), 0, dragCtx.startY+dragCtx.startH-3);
+      hh = dragCtx.startH + (dragCtx.startY - ny);
+      y = ny;
+    }
+    el.x=x; el.y=y; el.w=w; el.h=hh;
+  }
+  renderCanvasFast();
+}
+function renderCanvasFast(){
+  // лёгкий ререндер во время drag: без полной перестройки списков
+  const t = activeTemplate();
+  const node = renderLabelNode(t, previewProduct(), state.zoom, 'px', {interactive:true});
+  while(canvasEl.firstChild) canvasEl.removeChild(canvasEl.firstChild);
+  while(node.firstChild) canvasEl.appendChild(node.firstChild);
+}
+function onDragEnd(){
+  if(!dragCtx) return;
+  dragCtx = null;
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  save();
+  renderCanvas();
+}
+
+canvasEl.addEventListener('mousedown', (ev)=>{
+  if(ev.target === canvasEl){ state.selectedElementId = null; renderCanvas(); }
+});
+document.addEventListener('keydown', (ev)=>{
+  if(state.activeTab !== 'editor') return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag)) return;
+  const el = selectedElement();
+  if(!el) return;
+  if(ev.key === 'Delete' || ev.key === 'Backspace'){
+    ev.preventDefault();
+    removeElement(el.id);
+  }
+  const step = state.settings.gridSize || 1;
+  const t = activeTemplate();
+  if(ev.key === 'ArrowLeft'){ el.x = clamp(el.x-step,0,t.width-el.w); save(); renderCanvas(); }
+  if(ev.key === 'ArrowRight'){ el.x = clamp(el.x+step,0,t.width-el.w); save(); renderCanvas(); }
+  if(ev.key === 'ArrowUp'){ el.y = clamp(el.y-step,0,t.height-el.h); save(); renderCanvas(); }
+  if(ev.key === 'ArrowDown'){ el.y = clamp(el.y+step,0,t.height-el.h); save(); renderCanvas(); }
+});
+
+function removeElement(id){
+  const t = activeTemplate();
+  t.elements = t.elements.filter(e=>e.id!==id);
+  if(state.selectedElementId===id) state.selectedElementId=null;
+  save(); renderCanvas();
+}
+
+/* ===================== СВОЙСТВА ЭЛЕМЕНТА ===================== */
+function renderProps(){
+  const panel = document.getElementById('propsPanel');
+  const el = selectedElement();
+  if(!el){ panel.innerHTML = '<div class="empty-hint">Выберите элемент на холсте или добавьте новый слева</div>'; return; }
+  const def = ELEMENT_DEFS[el.type];
+  let html = `<div style="font-weight:700;margin-bottom:10px;">${def.icon} ${def.label}</div>`;
+
+  html += `<div class="row">
+    <label class="field"><span>X, мм</span><input type="number" step="0.5" data-bind="x" value="${el.x}"></label>
+    <label class="field"><span>Y, мм</span><input type="number" step="0.5" data-bind="y" value="${el.y}"></label>
+  </div>
+  <div class="row">
+    <label class="field"><span>Ширина, мм</span><input type="number" step="0.5" data-bind="w" value="${el.w}"></label>
+    <label class="field"><span>Высота, мм</span><input type="number" step="0.5" data-bind="h" value="${el.h}"></label>
+  </div>`;
+
+  html += `<label class="field"><span>Поворот</span>
+    <div class="row">${[0,90,180,270].map(r=>`<button data-rot="${r}" style="${r===el.rot?'background:var(--accent);color:#fff;border-color:var(--accent);':''}">${r}°</button>`).join('')}</div>
+  </label>`;
+
+  const textTypes = ['product_name','price','old_price','discount','store_name','date','article','unit','country','custom_text'];
+  if(textTypes.includes(el.type)){
+    html += `<hr class="sep">
+    <div class="row">
+      <label class="field"><span>Размер шрифта, мм</span><input type="number" step="0.1" data-bind="fontSize" value="${el.fontSize}"></label>
+      <label class="field"><span>Цвет</span><input type="text" data-bind="color" value="${el.color}" style="padding:2px;height:30px;" ></label>
+    </div>
+    <label class="checkbox-row"><input type="checkbox" data-bind="bold" ${el.bold?'checked':''}> Жирный</label>
+    <label class="field"><span>Выравнивание</span>
+      <select data-bind="align">
+        <option value="left" ${el.align==='left'?'selected':''}>По левому краю</option>
+        <option value="center" ${el.align==='center'?'selected':''}>По центру</option>
+        <option value="right" ${el.align==='right'?'selected':''}>По правому краю</option>
+      </select>
+    </label>`;
+  }
+
+  if(el.type==='price' || el.type==='old_price'){
+    html += `<label class="field"><span>Валюта</span>
+      <select data-bind="props.currency">
+        ${['₽','₴','₸','сом','€','$'].map(c=>`<option value="${c}" ${el.props.currency===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </label>`;
+  }
+  if(el.type==='price'){
+    html += `<label class="checkbox-row"><input type="checkbox" data-bind="props.showKopecks" ${el.props.showKopecks?'checked':''}> Копейки мелким шрифтом</label>`;
+  }
+  if(el.type==='discount'){
+    html += `<label class="field"><span>Формат (плейсхолдер {d})</span><input type="text" data-bind="props.format" value="${escapeHtml(el.props.format)}"></label>`;
+  }
+  if(el.type==='barcode'){
+    html += `<hr class="sep">
+    <label class="field"><span>Тип штрих-кода</span>
+      <select data-bind="props.format">
+        <option value="EAN13" ${el.props.format==='EAN13'?'selected':''}>EAN-13</option>
+        <option value="EAN8" ${el.props.format==='EAN8'?'selected':''}>EAN-8</option>
+        <option value="CODE128" ${el.props.format==='CODE128'?'selected':''}>Code-128</option>
+      </select>
+    </label>
+    <label class="checkbox-row"><input type="checkbox" data-bind="props.showDigits" ${el.props.showDigits?'checked':''}> Показывать цифры под штрихами</label>
+    <div id="eanHint" style="font-size:11px;color:var(--muted);">Код берётся из данных товара (колонка «Штрихкод»).</div>`;
+  }
+  if(el.type==='store_name'){
+    html += `<label class="checkbox-row"><input type="checkbox" data-bind="props.useGlobal" ${el.props.useGlobal?'checked':''}> Использовать название из настроек</label>
+    <label class="field"><span>Свой текст</span><input type="text" data-bind="props.text" value="${escapeHtml(el.props.text)}" ${el.props.useGlobal?'disabled':''}></label>`;
+  }
+  if(el.type==='date'){
+    html += `<label class="field"><span>Режим</span>
+      <select data-bind="props.mode">
+        <option value="auto" ${el.props.mode==='auto'?'selected':''}>Дата печати (сегодня)</option>
+        <option value="fixed" ${el.props.mode==='fixed'?'selected':''}>Своя дата</option>
+      </select>
+    </label>
+    <label class="field"><span>Своя дата</span><input type="date" data-bind="props.fixedDate" value="${el.props.fixedDate||''}" ${el.props.mode==='fixed'?'':'disabled'}></label>`;
+  }
+  if(['article','unit','country'].includes(el.type)){
+    html += `<label class="field"><span>Префикс текста</span><input type="text" data-bind="props.prefix" value="${escapeHtml(el.props.prefix)}"></label>`;
+  }
+  if(el.type==='custom_text'){
+    html += `<label class="field"><span>Текст</span><textarea data-bind="props.text">${escapeHtml(el.props.text)}</textarea></label>`;
+  }
+  if(el.type==='line'){
+    html += `<hr class="sep">
+    <label class="field"><span>Ориентация</span>
+      <select data-bind="props.orientation">
+        <option value="horizontal" ${el.props.orientation==='horizontal'?'selected':''}>Горизонтальная</option>
+        <option value="vertical" ${el.props.orientation==='vertical'?'selected':''}>Вертикальная</option>
+      </select>
+    </label>
+    <label class="field"><span>Толщина, мм</span><input type="number" step="0.1" data-bind="props.thickness" value="${el.props.thickness}"></label>
+    <label class="field"><span>Стиль</span>
+      <select data-bind="props.style">
+        <option value="solid" ${el.props.style==='solid'?'selected':''}>Сплошная</option>
+        <option value="dashed" ${el.props.style==='dashed'?'selected':''}>Пунктир</option>
+        <option value="dotted" ${el.props.style==='dotted'?'selected':''}>Точки</option>
+      </select>
+    </label>
+    <label class="field"><span>Цвет</span><input type="text" data-bind="color" value="${el.color}"></label>`;
+  }
+  if(el.type==='frame'){
+    html += `<hr class="sep">
+    <label class="field"><span>Толщина рамки, мм</span><input type="number" step="0.1" data-bind="props.thickness" value="${el.props.thickness}"></label>
+    <label class="field"><span>Радиус скругления, мм</span><input type="number" step="0.5" data-bind="props.radius" value="${el.props.radius}"></label>
+    <label class="field"><span>Стиль</span>
+      <select data-bind="props.style">
+        <option value="solid" ${el.props.style==='solid'?'selected':''}>Сплошная</option>
+        <option value="dashed" ${el.props.style==='dashed'?'selected':''}>Пунктир</option>
+        <option value="dotted" ${el.props.style==='dotted'?'selected':''}>Точки</option>
+      </select>
+    </label>
+    <label class="field"><span>Цвет</span><input type="text" data-bind="color" value="${el.color}"></label>`;
+  }
+
+  html += `<hr class="sep">
+  <div class="row">
+    <button id="btnDupEl">⧉ Копия</button>
+    <button id="btnFront">Вперёд</button>
+    <button id="btnBack">Назад</button>
+  </div>
+  <div class="row" style="margin-top:6px;">
+    <button id="btnDelEl" class="danger">🗑 Удалить элемент</button>
+  </div>`;
+
+  panel.innerHTML = html;
+
+  panel.querySelectorAll('[data-bind]').forEach(inputEl=>{
+    const evName = (inputEl.type==='checkbox') ? 'change' : (inputEl.tagName==='SELECT' ? 'change' : 'input');
+    inputEl.addEventListener(evName, ()=>{
+      const path = inputEl.dataset.bind;
+      let val;
+      if(inputEl.type === 'checkbox') val = inputEl.checked;
+      else if(inputEl.type === 'number') val = parseFloat(inputEl.value)||0;
+      else val = inputEl.value;
+      setNested(el, path, val);
+      save();
+      renderCanvas();
+    });
+  });
+  panel.querySelectorAll('[data-rot]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ el.rot = parseInt(btn.dataset.rot,10); save(); renderCanvas(); });
+  });
+  const dupBtn = panel.querySelector('#btnDupEl');
+  if(dupBtn) dupBtn.addEventListener('click', ()=>{
+    const t = activeTemplate();
+    const copy = JSON.parse(JSON.stringify(el));
+    copy.id = uid(); copy.x = clamp(copy.x+3,0,t.width-copy.w); copy.y = clamp(copy.y+3,0,t.height-copy.h);
+    t.elements.push(copy); state.selectedElementId = copy.id; save(); renderCanvas();
+  });
+  const frontBtn = panel.querySelector('#btnFront');
+  if(frontBtn) frontBtn.addEventListener('click', ()=>{
+    const t = activeTemplate();
+    const idx = t.elements.findIndex(e=>e.id===el.id);
+    if(idx>-1 && idx<t.elements.length-1){ t.elements.splice(idx,1); t.elements.push(el); save(); renderCanvas(); }
+  });
+  const backBtn = panel.querySelector('#btnBack');
+  if(backBtn) backBtn.addEventListener('click', ()=>{
+    const t = activeTemplate();
+    const idx = t.elements.findIndex(e=>e.id===el.id);
+    if(idx>0){ t.elements.splice(idx,1); t.elements.unshift(el); save(); renderCanvas(); }
+  });
+  const delBtn = panel.querySelector('#btnDelEl');
+  if(delBtn) delBtn.addEventListener('click', ()=> removeElement(el.id));
+}
+
+/* ===================== ШАБЛОНЫ: СПИСОК И ДЕЙСТВИЯ ===================== */
+function renderTplList(){
+  activeTemplate(); // на случай протухшего activeTemplateId — самолечение до подсветки
+  const list = document.getElementById('tplList');
+  list.innerHTML = '';
+  state.templates.forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'tpl-item'+(t.id===state.activeTemplateId?' active':'');
+    const roleBadge = t.role==='price_tag' ? ' <span class="role-badge">★ Ценник</span>'
+      : t.role==='barcode' ? ' <span class="role-badge">★ Штрихкод</span>' : '';
+    row.innerHTML = `<span class="name">${escapeHtml(t.name)}${roleBadge}</span><span class="meta">${t.width}×${t.height}</span>`;
+    row.addEventListener('click', ()=>{
+      state.activeTemplateId = t.id; state.selectedElementId=null; save();
+      renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+    });
+    list.appendChild(row);
+  });
+}
+function syncTplSizeInputs(){
+  const t = activeTemplate();
+  if(!t) return;
+  document.getElementById('tplW').value = t.width;
+  document.getElementById('tplH').value = t.height;
+  document.getElementById('tplPreset').value = '';
+}
+function syncTplRoleSelect(){
+  const t = activeTemplate();
+  if(!t) return;
+  document.getElementById('tplRole').value = t.role || 'none';
+}
+
+document.getElementById('btnNewTpl').addEventListener('click', async ()=>{
+  const name = await showPromptModal('Название нового шаблона:', 'Новый шаблон');
+  if(!name) return;
+  const t = {id:uid(), name, width:58, height:40, role:'none', elements:[]};
+  state.templates.push(t); state.activeTemplateId = t.id; state.selectedElementId=null;
+  save(); renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+});
+document.getElementById('btnDupTpl').addEventListener('click', ()=>{
+  const t = activeTemplate(); if(!t) return;
+  const copy = JSON.parse(JSON.stringify(t));
+  copy.id = uid(); copy.name = t.name + ' (копия)'; copy.role = 'none';
+  copy.elements.forEach(e=> e.id = uid());
+  state.templates.push(copy); state.activeTemplateId = copy.id;
+  save(); renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+});
+document.getElementById('btnRenameTpl').addEventListener('click', async ()=>{
+  const t = activeTemplate(); if(!t) return;
+  const name = await showPromptModal('Новое название шаблона:', t.name);
+  if(!name) return;
+  t.name = name; save(); renderTplList(); renderCanvas();
+});
+document.getElementById('btnDelTpl').addEventListener('click', async ()=>{
+  if(state.templates.length<=1){ toast('Нельзя удалить последний шаблон'); return; }
+  const t = activeTemplate(); if(!t) return;
+  if(!(await showConfirmModal('Удалить шаблон «'+t.name+'»?'))) return;
+  state.templates = state.templates.filter(x=>x.id!==t.id);
+  state.activeTemplateId = state.templates[0].id;
+  state.selectedElementId = null;
+  save(); renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+});
+document.getElementById('tplRole').addEventListener('change', (ev)=>{
+  const t = activeTemplate(); if(!t) return;
+  const newRole = ev.target.value;
+  if(newRole !== 'none'){
+    // Роль эксклюзивна — только один шаблон может быть активным ценником/этикеткой
+    state.templates.forEach(other=>{ if(other.id !== t.id && other.role === newRole) other.role = 'none'; });
+  }
+  t.role = newRole;
+  save(); renderTplList();
+  toast(newRole==='none'
+    ? 'Шаблон больше не используется при реальной печати'
+    : 'Готово — теперь этот шаблон и все его изменения сразу применяются на печати');
+});
+document.getElementById('btnExportTpl').addEventListener('click', ()=>{
+  downloadJSON({templates: state.templates}, 'labels-templates.json');
+});
+document.getElementById('btnImportTpl').addEventListener('click', ()=> document.getElementById('fileImportTpl').click());
+document.getElementById('fileImportTpl').addEventListener('change', (ev)=>{
+  const file = ev.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      const tpls = data.templates || (Array.isArray(data)? data : null);
+      if(!tpls) throw new Error('Не найдено поле templates');
+      tpls.forEach(t=>{ t.id = uid(); t.elements.forEach(e=> e.id = uid()); state.templates.push(t); });
+      save(); renderTplList(); renderCanvas();
+      toast('Шаблоны импортированы: '+tpls.length);
+    }catch(e){ toast('Ошибка импорта: '+e.message); }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+});
+
+function downloadJSON(obj, filename){
+  const blob = new Blob([JSON.stringify(obj,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+document.getElementById('tplW').addEventListener('input', (ev)=>{
+  const t = activeTemplate(); t.width = clamp(parseFloat(ev.target.value)||10, 5, 400); save(); renderCanvas();
+});
+document.getElementById('tplH').addEventListener('input', (ev)=>{
+  const t = activeTemplate(); t.height = clamp(parseFloat(ev.target.value)||10, 5, 400); save(); renderCanvas();
+});
+document.getElementById('tplPreset').addEventListener('change', (ev)=>{
+  if(!ev.target.value) return;
+  const [w,h] = ev.target.value.split('x').map(Number);
+  const t = activeTemplate(); t.width=w; t.height=h;
+  document.getElementById('tplW').value=w; document.getElementById('tplH').value=h;
+  save(); renderCanvas();
+});
+
+/* ===================== ДОБАВЛЕНИЕ ЭЛЕМЕНТОВ ===================== */
+const elGrid = document.getElementById('elBtnGrid');
+Object.keys(ELEMENT_DEFS).forEach(type=>{
+  const def = ELEMENT_DEFS[type];
+  const btn = document.createElement('button');
+  btn.innerHTML = `<span class="ic">${def.icon}</span><span>${def.label}</span>`;
+  btn.addEventListener('click', ()=>{
+    const t = activeTemplate(); if(!t) return;
+    const el = createElement(type);
+    el.x = clamp(el.x, 0, Math.max(0,t.width-el.w));
+    el.y = clamp(el.y, 0, Math.max(0,t.height-el.h));
+    t.elements.push(el);
+    state.selectedElementId = el.id;
+    save(); renderCanvas();
+  });
+  elGrid.appendChild(btn);
+});
+
+/* ===================== ХОЛСТ: ZOOM / СЕТКА ===================== */
+document.getElementById('zoomIn').addEventListener('click', ()=>{ state.zoom = Math.min(12, state.zoom+0.5); updateZoomLabel(); renderCanvas(); });
+document.getElementById('zoomOut').addEventListener('click', ()=>{ state.zoom = Math.max(1, state.zoom-0.5); updateZoomLabel(); renderCanvas(); });
+function updateZoomLabel(){
+  const base = 3.7795; // px per mm at 100% (96dpi)
+  document.getElementById('zoomLabel').textContent = Math.round(state.zoom/base*100)+'%';
+}
+document.getElementById('chkGrid').addEventListener('change', renderCanvas);
+document.getElementById('chkSnap').addEventListener('change', ()=>{});
+
+document.getElementById('previewProductSelect').addEventListener('change', (ev)=>{
+  state.previewProductId = ev.target.value; renderCanvas();
+});
+function renderPreviewProductSelect(){
+  const sel = document.getElementById('previewProductSelect');
+  sel.innerHTML = '';
+  if(!state.products.length){
+    sel.innerHTML = '<option value="">Пример (demo)</option>';
+    return;
+  }
+  state.products.forEach(p=>{
+    const opt = document.createElement('option');
+    opt.value = p.id; opt.textContent = p.name || '(без названия)';
+    sel.appendChild(opt);
+  });
+  if(state.previewProductId) sel.value = state.previewProductId;
+}
+
+/* ===================== ТАБЫ ===================== */
+document.querySelectorAll('#tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    state.activeTab = tab;
+    ['editor','settings'].forEach(name=>{
+      document.getElementById('view-'+name).classList.toggle('active', name===tab);
+    });
+    if(tab==='settings'){ syncSettingsForm(); }
+    if(tab==='editor'){ renderCanvas(); }
+  });
+});
+
+/* ===================== НАСТРОЙКИ ===================== */
+function syncSettingsForm(){
+  const s = state.settings;
+  document.getElementById('setStoreName').value = s.storeName;
+  document.getElementById('setCurrency').value = s.currency;
+  document.getElementById('setCountry').value = s.country;
+  document.getElementById('setBarcodeFormat').value = s.barcodeFormat;
+  document.getElementById('setGridSize').value = s.gridSize;
+  document.getElementById('setSnapDefault').value = s.snapDefault ? '1':'0';
+  document.getElementById('setPrintCols').value = s.printCols;
+  document.getElementById('setPrintMargin').value = s.printMargin;
+  document.getElementById('setPrintGapX').value = s.printGapX;
+  document.getElementById('setPrintGapY').value = s.printGapY;
+}
+function bindSetting(id, key, isNumber, isBool){
+  document.getElementById(id).addEventListener('change', (ev)=>{
+    let v = ev.target.value;
+    if(isBool) v = v === '1';
+    else if(isNumber) v = parseFloat(v)||0;
+    state.settings[key] = v;
+    save();
+    if(key==='gridSize'){ document.getElementById('chkSnap').checked = true; renderCanvas(); }
+    toast('Настройки сохранены');
+  });
+}
+bindSetting('setStoreName','storeName');
+bindSetting('setCurrency','currency');
+bindSetting('setCountry','country');
+bindSetting('setBarcodeFormat','barcodeFormat');
+bindSetting('setGridSize','gridSize', true);
+bindSetting('setSnapDefault','snapDefault', false, true);
+bindSetting('setPrintCols','printCols', true);
+bindSetting('setPrintMargin','printMargin', true);
+bindSetting('setPrintGapX','printGapX', true);
+bindSetting('setPrintGapY','printGapY', true);
+
+document.getElementById('btnExportAll').addEventListener('click', ()=>{
+  downloadJSON({templates:state.templates, products:state.products, settings:state.settings}, 'labels-backup.json');
+});
+document.getElementById('btnImportAll').addEventListener('click', ()=> document.getElementById('fileImportAll').click());
+document.getElementById('fileImportAll').addEventListener('change', (ev)=>{
+  const file = ev.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(!(await showConfirmModal('Импорт заменит текущие шаблоны, товары и настройки. Продолжить?'))) return;
+      state.templates = data.templates && data.templates.length ? data.templates : state.templates;
+      state.activeTemplateId = state.templates[0].id;
+      state.products = data.products || [];
+      state.settings = Object.assign(defaultSettings(), data.settings||{});
+      state.selectedElementId = null;
+      save();
+      renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+      renderPreviewProductSelect(); syncSettingsForm();
+      toast('Данные импортированы');
+    }catch(e){ toast('Ошибка импорта: '+e.message); }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+});
+document.getElementById('btnResetAll').addEventListener('click', async ()=>{
+  if(!(await showConfirmModal('Сбросить все данные и вернуть демо-пример? Это действие необратимо.'))) return;
+  localStorage.removeItem(STORAGE_KEY);
+  load();
+  state.selectedElementId = null;
+  renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+  renderPreviewProductSelect(); syncSettingsForm();
+  toast('Данные сброшены к демо-примеру');
+});
+
+/* ===================== СТАРТ ===================== */
+load();
+document.getElementById('chkSnap').checked = !!state.settings.snapDefault;
+renderTplList();
+syncTplSizeInputs();
+syncTplRoleSelect();
+renderPreviewProductSelect();
+updateZoomLabel();
+renderCanvas();
+
+
+syncSettingsForm();
+// Если при старте уже есть шаблон с ролью (Ценник/Штрихкод), сразу
+// сообщаем родительской странице — чтобы настройки не «отставали»,
+// если их поменяли где-то ещё (импорт, сброс и т.п.).
+scheduleParentSync();
+
+})();
+</script>
+</body>
+</html>

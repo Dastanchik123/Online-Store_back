@@ -44,6 +44,9 @@ class SettingController extends Controller
             'payment_contact', 'payment_recipient', 'payment_mbank_qr_image',
             'pos_allow_debt', 'pos_allow_price_change',
             'receipt_header', 'receipt_title', 'receipt_phone', 'receipt_footer',
+            'label_template_price_tag', 'label_template_barcode',
+            'label_active_template_price_tag', 'label_active_template_barcode',
+            'label_templates_all', 'print_label_queue',
         ];
 
         $settings = Setting::whereIn('key', $keys)->get()->mapWithKeys(function ($item) {
@@ -68,6 +71,9 @@ class SettingController extends Controller
         'payment_contact', 'payment_recipient',
         'pos_allow_debt', 'pos_allow_price_change', 'pos_hot_products_title',
         'receipt_header', 'receipt_title', 'receipt_phone', 'receipt_footer',
+        'label_template_price_tag', 'label_template_barcode',
+        'label_active_template_price_tag', 'label_active_template_barcode',
+        'label_templates_all', 'print_label_queue',
     ];
 
     public function update(Request $request)

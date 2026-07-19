@@ -13,7 +13,7 @@ class PurchaseController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Purchase::with(['supplier:id,name', 'items.product:id,name,sku']);
+        $query = Purchase::with(['supplier:id,name', 'items.product:id,name,sku,price,sale_price,purchase_price,image,images']);
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
