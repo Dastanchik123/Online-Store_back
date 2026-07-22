@@ -74,9 +74,6 @@
     flex-shrink:0;
   }
   #topbar h1{font-size:15px;margin:0;font-weight:700;white-space:nowrap;}
-  #tabs{display:flex;gap:4px;}
-  #tabs button{border-radius:6px;padding:7px 14px;}
-  #tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff;}
   #topbar .spacer{flex:1;}
 
   /* main layout */
@@ -149,15 +146,6 @@
 
   .empty-hint{color:var(--muted);font-size:12px;text-align:center;padding:30px 10px;}
 
-  .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
-
-  /* settings view */
-  #view-settings{display:none;flex:1;min-height:0;overflow-y:auto;padding:20px;}
-  #view-settings.active{display:flex;flex-direction:column;align-items:center;}
-  #view-settings .card{width:100%;max-width:640px;}
-  #view-settings h2{font-size:15px;margin:0 0 4px;}
-  #view-settings .desc{color:var(--muted);font-size:11.5px;margin-bottom:14px;}
-
   ::-webkit-scrollbar{width:9px;height:9px;}
   ::-webkit-scrollbar-thumb{background:#c6cddb;border-radius:6px;}
   ::-webkit-scrollbar-track{background:transparent;}
@@ -187,10 +175,6 @@
 
 <div id="topbar">
   <h1>🏷️ Редактор этикеток</h1>
-  <div id="tabs">
-    <button data-tab="editor" class="active">Редактор</button>
-    <button data-tab="settings">Настройки</button>
-  </div>
   <div class="spacer"></div>
   <span id="tpl-name-display" style="font-size:12px;color:var(--muted)"></span>
 </div>
@@ -210,6 +194,9 @@
       <button id="btnExportTpl">⬇ Экспорт JSON</button>
       <button id="btnImportTpl">⬆ Импорт JSON</button>
       <input type="file" id="fileImportTpl" accept=".json" style="display:none">
+    </div>
+    <div class="tpl-actions">
+      <button id="btnSyncFromDb">🔄 Обновить из базы</button>
     </div>
     <label class="field"><span>Использовать этот шаблон как</span>
       <select id="tplRole">
@@ -265,71 +252,6 @@
   <div id="sidebar-right" class="col">
     <h3 class="panel-title">Свойства элемента</h3>
     <div id="propsPanel"><div class="empty-hint">Выберите элемент на холсте или добавьте новый слева</div></div>
-  </div>
-</div>
-
-<!-- ===================== SETTINGS TAB ===================== -->
-<div id="view-settings">
-  <div class="card">
-    <h2>Данные по умолчанию</h2>
-    <div class="desc">Подставляются в новые элементы и товары, если своё значение не указано.</div>
-    <div class="row">
-      <label class="field"><span>Название магазина</span><input type="text" id="setStoreName"></label>
-      <label class="field"><span>Валюта</span>
-        <select id="setCurrency">
-          <option value="₽">₽ — рубль</option>
-          <option value="₴">₴ — гривна</option>
-          <option value="₸">₸ — тенге</option>
-          <option value="сом">сом — сом</option>
-          <option value="€">€ — евро</option>
-          <option value="$">$ — доллар</option>
-        </select>
-      </label>
-    </div>
-    <div class="row">
-      <label class="field"><span>Страна-производитель по умолчанию</span><input type="text" id="setCountry"></label>
-      <label class="field"><span>Формат штрих-кода по умолчанию</span>
-        <select id="setBarcodeFormat">
-          <option value="EAN13">EAN-13</option>
-          <option value="EAN8">EAN-8</option>
-          <option value="CODE128">Code-128</option>
-        </select>
-      </label>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Холст и сетка</h2>
-    <div class="row">
-      <label class="field"><span>Шаг сетки, мм</span><input type="number" id="setGridSize" min="0.5" max="20" step="0.5"></label>
-      <label class="field"><span>Привязка к сетке по умолчанию</span>
-        <select id="setSnapDefault"><option value="1">Включена</option><option value="0">Выключена</option></select>
-      </label>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Печать листа A4</h2>
-    <div class="row">
-      <label class="field"><span>Колонок по умолчанию</span><input type="number" id="setPrintCols" min="1" max="12"></label>
-      <label class="field"><span>Поля листа по умолчанию, мм</span><input type="number" id="setPrintMargin" min="0" max="30" step="0.5"></label>
-    </div>
-    <div class="row">
-      <label class="field"><span>Промежуток X по умолчанию, мм</span><input type="number" id="setPrintGapX" min="0" max="30" step="0.5"></label>
-      <label class="field"><span>Промежуток Y по умолчанию, мм</span><input type="number" id="setPrintGapY" min="0" max="30" step="0.5"></label>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Резервное копирование</h2>
-    <div class="desc">Полный экспорт/импорт всех данных приложения: шаблоны, товары и настройки.</div>
-    <div class="row">
-      <button id="btnExportAll">⬇ Экспорт всех данных (JSON)</button>
-      <button id="btnImportAll">⬆ Импорт всех данных</button>
-      <input type="file" id="fileImportAll" accept=".json" style="display:none">
-    </div>
-    <hr class="sep">
-    <button id="btnResetAll" class="danger">Сбросить всё к демо-примеру</button>
   </div>
 </div>
 
@@ -450,6 +372,11 @@ function validateEAN13(code){
 
 /* ===================== ХРАНЕНИЕ ===================== */
 const STORAGE_KEY = 'labelEditorApp_v1';
+// Внутри iframe (админка) БД — единственный источник правды: localStorage
+// там не читается и не пишется, только держим состояние в памяти вкладки и
+// синхронизируем с родителем. Как отдельный HTML-файл (открыт напрямую, без
+// родителя) редактор по-прежнему работает офлайн через localStorage.
+const isEmbedded = window.parent !== window;
 
 function defaultSettings(){
   return {
@@ -503,12 +430,17 @@ let state = {
 };
 
 function save(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    templates: state.templates,
-    activeTemplateId: state.activeTemplateId,
-    products: state.products,
-    settings: state.settings
-  }));
+  // Внутри iframe в localStorage больше ничего не пишем — БД (через
+  // scheduleParentSync) единственное хранилище, иначе старый локальный кэш
+  // при следующем открытии снова перетрёт то, что реально сохранено в базе.
+  if(!isEmbedded){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      templates: state.templates,
+      activeTemplateId: state.activeTemplateId,
+      products: state.products,
+      settings: state.settings
+    }));
+  }
   scheduleParentSync();
 }
 
@@ -517,7 +449,7 @@ function save(){
 // без отдельной кнопки "Сделать активным" и без риска забыть сохранить.
 let _parentSyncTimer = null;
 function scheduleParentSync(){
-  if(window.parent === window) return; // открыт не во фрейме — синхронизировать некуда
+  if(!isEmbedded) return; // открыт не во фрейме — синхронизировать некуда
   clearTimeout(_parentSyncTimer);
   _parentSyncTimer = setTimeout(()=>{
     const priceTagTpl = state.templates.find(t=>t.role==='price_tag') || null;
@@ -534,6 +466,14 @@ function scheduleParentSync(){
 }
 
 function load(){
+  if(isEmbedded){
+    // Ничего не читаем из localStorage и не подставляем демо-заглушку —
+    // ждём первый push от родительской страницы с реальными данными из БД
+    // (см. window.addEventListener('message', ...) ниже). До его прихода
+    // список шаблонов пуст, renderTplList/renderCanvas это переживают.
+    state.products = demoProducts();
+    return;
+  }
   let raw;
   try{ raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); }catch(e){ raw = null; }
   if(raw && raw.templates && raw.templates.length){
@@ -548,6 +488,23 @@ function load(){
     state.products = demoProducts();
   }
 }
+
+function adoptTemplatesFromParent(list){
+  state.templates = JSON.parse(JSON.stringify(list));
+  state.activeTemplateId = state.templates[0].id;
+  state.selectedElementId = null;
+  save();
+  renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
+  toast('Шаблоны обновлены из базы: '+state.templates.length);
+}
+// В embedded-режиме БД — источник правды: принимаем ЛЮБОЙ push от родителя
+// (и первый при открытии, и по кнопке "Обновить из базы"), не сверяясь с
+// локальным кэшем — его здесь просто не существует.
+window.addEventListener('message', (event)=>{
+  if(!isEmbedded || event.source !== window.parent) return;
+  if(!event.data || event.data.source !== 'settings-page' || !Array.isArray(event.data.templates) || !event.data.templates.length) return;
+  adoptTemplatesFromParent(event.data.templates);
+});
 
 /* ===================== ОПРЕДЕЛЕНИЯ ЭЛЕМЕНТОВ ===================== */
 const ELEMENT_DEFS = {
@@ -1092,6 +1049,10 @@ function renderTplList(){
   activeTemplate(); // на случай протухшего activeTemplateId — самолечение до подсветки
   const list = document.getElementById('tplList');
   list.innerHTML = '';
+  if(isEmbedded && !state.templates.length){
+    list.innerHTML = '<div class="tpl-item" style="color:var(--muted);cursor:default;">Загрузка шаблонов из базы…</div>';
+    return;
+  }
   state.templates.forEach(t=>{
     const row = document.createElement('div');
     row.className = 'tpl-item'+(t.id===state.activeTemplateId?' active':'');
@@ -1181,6 +1142,11 @@ document.getElementById('fileImportTpl').addEventListener('change', (ev)=>{
   reader.readAsText(file);
   ev.target.value = '';
 });
+document.getElementById('btnSyncFromDb').addEventListener('click', async ()=>{
+  if(!isEmbedded) return;
+  if(!(await showConfirmModal('Обновить список шаблонов из базы? Текущий список слева будет заменён тем, что сохранено в настройках магазина.'))) return;
+  window.parent.postMessage({source:'label-editor', requestTemplates:true}, '*');
+});
 
 function downloadJSON(obj, filename){
   const blob = new Blob([JSON.stringify(obj,null,2)], {type:'application/json'});
@@ -1249,94 +1215,9 @@ function renderPreviewProductSelect(){
   if(state.previewProductId) sel.value = state.previewProductId;
 }
 
-/* ===================== ТАБЫ ===================== */
-document.querySelectorAll('#tabs button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    state.activeTab = tab;
-    ['editor','settings'].forEach(name=>{
-      document.getElementById('view-'+name).classList.toggle('active', name===tab);
-    });
-    if(tab==='settings'){ syncSettingsForm(); }
-    if(tab==='editor'){ renderCanvas(); }
-  });
-});
-
-/* ===================== НАСТРОЙКИ ===================== */
-function syncSettingsForm(){
-  const s = state.settings;
-  document.getElementById('setStoreName').value = s.storeName;
-  document.getElementById('setCurrency').value = s.currency;
-  document.getElementById('setCountry').value = s.country;
-  document.getElementById('setBarcodeFormat').value = s.barcodeFormat;
-  document.getElementById('setGridSize').value = s.gridSize;
-  document.getElementById('setSnapDefault').value = s.snapDefault ? '1':'0';
-  document.getElementById('setPrintCols').value = s.printCols;
-  document.getElementById('setPrintMargin').value = s.printMargin;
-  document.getElementById('setPrintGapX').value = s.printGapX;
-  document.getElementById('setPrintGapY').value = s.printGapY;
-}
-function bindSetting(id, key, isNumber, isBool){
-  document.getElementById(id).addEventListener('change', (ev)=>{
-    let v = ev.target.value;
-    if(isBool) v = v === '1';
-    else if(isNumber) v = parseFloat(v)||0;
-    state.settings[key] = v;
-    save();
-    if(key==='gridSize'){ document.getElementById('chkSnap').checked = true; renderCanvas(); }
-    toast('Настройки сохранены');
-  });
-}
-bindSetting('setStoreName','storeName');
-bindSetting('setCurrency','currency');
-bindSetting('setCountry','country');
-bindSetting('setBarcodeFormat','barcodeFormat');
-bindSetting('setGridSize','gridSize', true);
-bindSetting('setSnapDefault','snapDefault', false, true);
-bindSetting('setPrintCols','printCols', true);
-bindSetting('setPrintMargin','printMargin', true);
-bindSetting('setPrintGapX','printGapX', true);
-bindSetting('setPrintGapY','printGapY', true);
-
-document.getElementById('btnExportAll').addEventListener('click', ()=>{
-  downloadJSON({templates:state.templates, products:state.products, settings:state.settings}, 'labels-backup.json');
-});
-document.getElementById('btnImportAll').addEventListener('click', ()=> document.getElementById('fileImportAll').click());
-document.getElementById('fileImportAll').addEventListener('change', (ev)=>{
-  const file = ev.target.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = async ()=>{
-    try{
-      const data = JSON.parse(reader.result);
-      if(!(await showConfirmModal('Импорт заменит текущие шаблоны, товары и настройки. Продолжить?'))) return;
-      state.templates = data.templates && data.templates.length ? data.templates : state.templates;
-      state.activeTemplateId = state.templates[0].id;
-      state.products = data.products || [];
-      state.settings = Object.assign(defaultSettings(), data.settings||{});
-      state.selectedElementId = null;
-      save();
-      renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
-      renderPreviewProductSelect(); syncSettingsForm();
-      toast('Данные импортированы');
-    }catch(e){ toast('Ошибка импорта: '+e.message); }
-  };
-  reader.readAsText(file);
-  ev.target.value = '';
-});
-document.getElementById('btnResetAll').addEventListener('click', async ()=>{
-  if(!(await showConfirmModal('Сбросить все данные и вернуть демо-пример? Это действие необратимо.'))) return;
-  localStorage.removeItem(STORAGE_KEY);
-  load();
-  state.selectedElementId = null;
-  renderTplList(); syncTplSizeInputs(); syncTplRoleSelect(); renderCanvas();
-  renderPreviewProductSelect(); syncSettingsForm();
-  toast('Данные сброшены к демо-примеру');
-});
-
 /* ===================== СТАРТ ===================== */
 load();
+if(!isEmbedded) document.getElementById('btnSyncFromDb').style.display = 'none';
 document.getElementById('chkSnap').checked = !!state.settings.snapDefault;
 renderTplList();
 syncTplSizeInputs();
@@ -1344,13 +1225,9 @@ syncTplRoleSelect();
 renderPreviewProductSelect();
 updateZoomLabel();
 renderCanvas();
-
-
-syncSettingsForm();
-// Если при старте уже есть шаблон с ролью (Ценник/Штрихкод), сразу
-// сообщаем родительской странице — чтобы настройки не «отставали»,
-// если их поменяли где-то ещё (импорт, сброс и т.п.).
-scheduleParentSync();
+// Шаблоны из БД придут push-ом от родительской страницы (см. слушатель
+// message выше) — сами ничего не отправляем при старте, чтобы не перетереть
+// сервер пустым/устаревшим списком.
 
 })();
 </script>
