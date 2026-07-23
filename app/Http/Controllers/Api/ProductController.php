@@ -370,16 +370,28 @@ class ProductController extends Controller
         }
     }
 
-    public function generateSku()
+    public function generateSku(Request $request)
     {
         $prefix     = '2';
         $bodyLength = 11;
 
-        $next = Product::where('sku', 'like', $prefix.'%')
+        $dbMax = Product::where('sku', 'like', $prefix.'%')
             ->pluck('sku')
             ->filter(fn ($sku) => preg_match('/^2\d{12}$/', $sku))
             ->map(fn ($sku) => (int) substr($sku, 1, $bodyLength))
-            ->max() + 1;
+            ->max() ?? 0;
+
+        // "current" — SKU, уже показанный в форме (ещё не сохранён). Без него
+        // повторный клик на "Сгенерировать" до сохранения товара всегда
+        // возвращал бы одно и то же значение — счётчик двигает вперёд только
+        // сохранение товара в БД, а не сам факт генерации.
+        $current     = (string) $request->query('current', '');
+        $currentBody = 0;
+        if (preg_match('/^2(\d{11})\d$/', $current, $m)) {
+            $currentBody = (int) $m[1];
+        }
+
+        $next = max($dbMax, $currentBody) + 1;
 
         do {
             $body = str_pad($next, $bodyLength, '0', STR_PAD_LEFT);
