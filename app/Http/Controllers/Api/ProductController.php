@@ -372,19 +372,33 @@ class ProductController extends Controller
 
     public function generateSku()
     {
-        $unique = false;
-        $sku    = '';
+        $prefix     = '2';
+        $bodyLength = 11;
 
-        while (! $unique) {
+        $next = Product::where('sku', 'like', $prefix.'%')
+            ->pluck('sku')
+            ->filter(fn ($sku) => preg_match('/^2\d{12}$/', $sku))
+            ->map(fn ($sku) => (int) substr($sku, 1, $bodyLength))
+            ->max() + 1;
 
-            $sku = date('ymd') . str_pad(mt_rand(0, 9999), 4, '0', STR_PAD_LEFT);
-
-            if (! Product::where('sku', $sku)->exists()) {
-                $unique = true;
-            }
-        }
+        do {
+            $body = str_pad($next, $bodyLength, '0', STR_PAD_LEFT);
+            $sku  = $prefix.$body.$this->eanCheckDigit($prefix.$body);
+            $exists = Product::where('sku', $sku)->exists();
+            $next++;
+        } while ($exists);
 
         return response()->json(['sku' => $sku]);
+    }
+
+    private function eanCheckDigit(string $digits12): int
+    {
+        $sum = 0;
+        foreach (str_split($digits12) as $i => $digit) {
+            $sum += ($i % 2 === 0) ? (int) $digit : (int) $digit * 3;
+        }
+
+        return (10 - ($sum % 10)) % 10;
     }
 
     public function aiDescription(Request $request, AiService $aiService)
