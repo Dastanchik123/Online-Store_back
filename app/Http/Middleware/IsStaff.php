@@ -10,7 +10,14 @@ class IsStaff
     
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user() && in_array($request->user()->role, ['admin', 'purchaser', 'cashier'])) {
+        // 'staff' — это "любая роль, кроме обычного покупателя ('user')".
+        // Роли теперь динамические (таблица roles), поэтому здесь нельзя
+        // хардкодить конкретные имена — иначе новая кастомная роль (например
+        // "Старший кассир") никогда не пройдёт дальше этого middleware, даже
+        // если ей выданы нужные permissions. Реальная гранулярность доступа
+        // обеспечивается уже внутри — middleware('permission:...') и
+        // $user->hasPermission() на уровне конкретных роутов/контроллеров.
+        if ($request->user() && $request->user()->role !== 'user') {
             return $next($request);
         }
 

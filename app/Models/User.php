@@ -95,4 +95,16 @@ class User extends Authenticatable
     {
         return $this->hasMany(Wishlist::class);
     }
+
+
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->role === 'admin') {
+            return true;
+        }
+
+        return RolePermission::where('role', $this->role)
+            ->where('permission', $permission)
+            ->exists();
+    }
 }

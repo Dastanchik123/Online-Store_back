@@ -46,6 +46,20 @@ class StoreSeeder extends Seeder
             ['role' => 'manager', 'permission' => 'products.edit'],
             ['role' => 'manager', 'permission' => 'customers.view'],
 
+            // Раньше права закупщика/кассира существовали только как хардкод во
+            // фронтенде (stores/auth.ts) и бэкенд ничего о них не знал. Досеяно,
+            // чтобы role_permissions было единым источником правды для всех ролей.
+            ['role' => 'purchaser', 'permission' => 'purchaser.access'],
+            ['role' => 'purchaser', 'permission' => 'products.view'],
+            ['role' => 'purchaser', 'permission' => 'products.edit'],
+            ['role' => 'purchaser', 'permission' => 'categories.manage'],
+            ['role' => 'purchaser', 'permission' => 'suppliers.manage'],
+            ['role' => 'purchaser', 'permission' => 'purchases.manage'],
+            ['role' => 'purchaser', 'permission' => 'inventory.manage'],
+
+            ['role' => 'cashier', 'permission' => 'cashier.access'],
+            ['role' => 'cashier', 'permission' => 'pos.access'],
+
             ['role' => 'admin', 'permission' => 'reports.view'],
             ['role' => 'admin', 'permission' => 'settings.edit'],
             ['role' => 'admin', 'permission' => 'coupons.manage'],

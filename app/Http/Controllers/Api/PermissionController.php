@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\RolePermission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PermissionController extends Controller
 {
@@ -24,14 +25,16 @@ class PermissionController extends Controller
             'permissions.*' => 'string',
         ]);
 
-        RolePermission::where('role', $role)->delete();
+        DB::transaction(function () use ($role, $request) {
+            RolePermission::where('role', $role)->delete();
 
-        foreach ($request->permissions as $perm) {
-            RolePermission::create([
-                'role'       => $role,
-                'permission' => $perm,
-            ]);
-        }
+            foreach ($request->permissions as $perm) {
+                RolePermission::create([
+                    'role'       => $role,
+                    'permission' => $perm,
+                ]);
+            }
+        });
 
         return response()->json(['message' => 'Permissions updated']);
     }

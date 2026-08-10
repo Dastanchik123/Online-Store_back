@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -35,7 +36,7 @@ class UserController extends Controller
             'name'     => 'required|string|max:255',
             'email'    => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role'     => 'required|string|in:admin,user,purchaser,cashier,manager',
+            'role'     => ['required', 'string', Rule::exists('roles', 'name')],
             'phone'    => 'nullable|string',
             'terminal_id' => 'nullable|string',
         ]);
@@ -109,12 +110,19 @@ class UserController extends Controller
         $validated = $request->validate([
             'name'     => 'sometimes|string|max:255',
             'email'    => 'sometimes|email|unique:users,email,' . $user->id,
-            'role'     => 'sometimes|string|in:admin,user,purchaser,cashier,manager',
+            'role'     => ['sometimes', 'string', Rule::exists('roles', 'name')],
             'phone'    => 'nullable|string',
             'terminal_id' => 'nullable|string',
             'password' => 'nullable|string|min:8',
-            'avatar'   => 'nullable|image|max:10240', 
+            'avatar'   => 'nullable|image|max:10240',
         ]);
+
+        if (isset($validated['role']) && $user->role === 'admin' && $validated['role'] !== 'admin') {
+            $adminCount = User::where('role', 'admin')->count();
+            if ($adminCount <= 1) {
+                return response()->json(['message' => 'Нельзя понизить последнего администратора.'], 422);
+            }
+        }
 
         if (isset($validated['password']) && $validated['password']) {
             $validated['password'] = \Illuminate\Support\Facades\Hash::make($validated['password']);
@@ -140,6 +148,10 @@ class UserController extends Controller
     
     public function destroy(User $user)
     {
+        if ($user->role === 'admin' && User::where('role', 'admin')->count() <= 1) {
+            return response()->json(['message' => 'Нельзя удалить последнего администратора.'], 422);
+        }
+
         $user->delete();
         return response()->json(['message' => 'User deleted successfully']);
     }

@@ -15,7 +15,18 @@ use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
-    
+    // is_package: количество позиции хранится в упаковках (рулон/мешок), а
+    // склад — всегда в базовой единице (метры/кг), поэтому возврат на склад
+    // домножается на package_size товара.
+    private function baseQuantity($product, float $quantity, bool $isPackage): float
+    {
+        if ($isPackage && $product && $product->package_size) {
+            return $quantity * (float) $product->package_size;
+        }
+        return $quantity;
+    }
+
+
     public function index(Request $request)
     {
         $user  = Auth::user();
@@ -23,7 +34,7 @@ class OrderController extends Controller
 
         
         
-        if ($user && in_array($user->role, ['admin', 'purchaser', 'cashier'])) {
+        if ($user && $user->hasPermission('orders.view')) {
             if ($request->filled('user_id')) {
                 $query->where('user_id', $request->user_id);
             }
@@ -253,7 +264,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        if ($user && ! in_array($user->role, ['admin', 'purchaser', 'cashier']) && $order->user_id !== $user->id) {
+        if ($user && ! $user->hasPermission('orders.view') && $order->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -264,6 +275,10 @@ class OrderController extends Controller
     
     public function update(Request $request, Order $order)
     {
+        if (!Auth::user()->hasPermission('orders.edit')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: orders.edit'], 403);
+        }
+
         $validated = $request->validate([
             'status'         => 'sometimes|in:pending,processing,shipped,delivered,cancelled,refunded',
             'payment_status' => 'sometimes|in:pending,paid,failed,refunded',
@@ -384,57 +399,57 @@ class OrderController extends Controller
                 foreach ($order->items as $item) {
                     $product = $item->product;
 
-                    
+
                     $qtyToReturn = $item->quantity - $item->refunded_quantity;
 
                     if ($product && $qtyToReturn > 0) {
-                        $product->increment('stock_quantity', $qtyToReturn);
+                        $product->increment('stock_quantity', $this->baseQuantity($product, (float) $qtyToReturn, (bool) $item->is_package));
                     }
 
-                    
+
                     $item->update(['refunded_quantity' => $item->quantity]);
                 }
             }
 
-            
-            
 
-            
-            
-            
 
-            
-            
-            
 
-            
 
-            
+
+
+
+
+
+
+
+
+
+
 
             if (in_array($newStatus, $cancelStatuses) && in_array($oldStatus, $activeStatuses)) {
                 foreach ($order->items as $item) {
                     $product = $item->product;
 
-                    
+
                     $qtyToReturn = max(0, $item->quantity - $item->refunded_quantity);
 
                     if ($product && $qtyToReturn > 0) {
-                        $product->increment('stock_quantity', $qtyToReturn);
+                        $product->increment('stock_quantity', $this->baseQuantity($product, (float) $qtyToReturn, (bool) $item->is_package));
                     }
 
-                    
+
                     $item->update(['refunded_quantity' => $item->quantity]);
                 }
             }
 
-            
+
             if (in_array($oldStatus, $cancelStatuses) && in_array($newStatus, $activeStatuses)) {
                 foreach ($order->items as $item) {
                     $product = $item->product;
                     if ($product) {
-                        $product->decrement('stock_quantity', $item->quantity);
+                        $product->decrement('stock_quantity', $this->baseQuantity($product, (float) $item->quantity, (bool) $item->is_package));
                     }
-                    
+
                     $item->update(['refunded_quantity' => 0]);
                 }
 
@@ -517,7 +532,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        if ($user && $order->user_id !== $user->id) {
+        if ($user && $order->user_id !== $user->id && !$user->hasPermission('orders.edit')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -530,7 +545,7 @@ class OrderController extends Controller
             
             foreach ($order->items as $item) {
                 $product = $item->product;
-                $product->increment('stock_quantity', $item->quantity);
+                $product->increment('stock_quantity', $this->baseQuantity($product, (float) $item->quantity, (bool) $item->is_package));
             }
 
             $order->update(['status' => 'cancelled']);
@@ -552,10 +567,14 @@ class OrderController extends Controller
     
     public function returnItems(Request $request, Order $order)
     {
+        if (!Auth::user()->hasPermission('orders.edit')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: orders.edit'], 403);
+        }
+
         $validated = $request->validate([
             'items'            => 'required|array',
             'items.*.id'       => 'required|exists:order_items,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.quantity' => 'required|numeric|min:0.001',
         ]);
 
         return DB::transaction(function () use ($validated, $order) {
@@ -580,7 +599,7 @@ class OrderController extends Controller
                 
                 $product = $orderItem->product;
                 if ($product) {
-                    $product->increment('stock_quantity', $returnItem['quantity']);
+                    $product->increment('stock_quantity', $this->baseQuantity($product, (float) $returnItem['quantity'], (bool) $orderItem->is_package));
                 }
 
                 

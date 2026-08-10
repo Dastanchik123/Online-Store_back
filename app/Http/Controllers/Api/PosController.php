@@ -20,6 +20,12 @@ class PosController extends Controller
         $today   = now()->startOfDay();
         $staffId = $request->get('staff_id');
 
+        // Кассир без права reports.view видит только свою выручку,
+        // даже если попробует запросить чужой staff_id напрямую через API.
+        if (!$request->user()->hasPermission('reports.view')) {
+            $staffId = $request->user()->id;
+        }
+
         $cashQuery = FinancialTransaction::where('type', 'income')
             ->whereDate('created_at', $today)
             ->where('category', 'like', '%POS - Наличными%');
@@ -76,7 +82,8 @@ class PosController extends Controller
         $request->validate([
             'items'              => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity'   => 'required|integer|min:1',
+            'items.*.quantity'   => 'required|numeric|min:0.001',
+            'items.*.is_package' => 'nullable|boolean',
             'items.*.price'      => 'required|numeric|min:0',
             'user_id'            => 'nullable|exists:users,id',
             'cash_amount'        => 'required|numeric|min:0',
@@ -96,11 +103,17 @@ class PosController extends Controller
 
             $allowPriceChange = \App\Models\Setting::where('key', 'pos_allow_price_change')->value('value');
             foreach ($items as $itemData) {
-                $product = \App\Models\Product::find($itemData['product_id']);
+                $product   = \App\Models\Product::find($itemData['product_id']);
+                $isPackage = (bool) ($itemData['is_package'] ?? false);
                 if ($product) {
-                    $originalPrice = $product->sale_price ?? $product->price;
+                    if ($isPackage && $product->package_price !== null) {
+                        $originalPrice = $product->package_price;
+                        $costPrice     = (float) ($product->purchase_price ?? 0) * (float) ($product->package_size ?? 1);
+                    } else {
+                        $originalPrice = $product->sale_price ?? $product->price;
+                        $costPrice     = (float) ($product->purchase_price ?? 0);
+                    }
                     $sellingPrice  = (float) $itemData['price'];
-                    $costPrice     = (float) ($product->purchase_price ?? 0);
 
                     if (($allowPriceChange === '0' || $allowPriceChange === 'false') && abs($sellingPrice - $originalPrice) > 0.01) {
                         throw new \Exception("Изменение цены запрещено настройками системы для товара: {$product->name}");
@@ -158,7 +171,11 @@ class PosController extends Controller
             ]);
 
             foreach ($items as $itemData) {
-                $product = Product::find($itemData['product_id']);
+                $product   = Product::find($itemData['product_id']);
+                $isPackage = (bool) ($itemData['is_package'] ?? false);
+                $baseQty   = ($isPackage && $product && $product->package_size)
+                    ? $itemData['quantity'] * (float) $product->package_size
+                    : $itemData['quantity'];
 
                 OrderItem::create([
                     'order_id'       => $order->id,
@@ -167,12 +184,13 @@ class PosController extends Controller
                     'product_sku'    => $product->sku,
                     'purchase_price' => $product->purchase_price,
                     'quantity'       => $itemData['quantity'],
+                    'is_package'     => $isPackage,
                     'price'          => $itemData['price'],
                     'total'          => $itemData['price'] * $itemData['quantity'],
                 ]);
 
-                $product->decrement('stock_quantity', $itemData['quantity']);
-                $product->increment('sales_count', $itemData['quantity']);
+                $product->decrement('stock_quantity', $baseQty);
+                $product->increment('sales_count', $baseQty);
                 $product->update(['in_stock' => $product->stock_quantity > 0]);
             }
 
@@ -235,9 +253,13 @@ class PosController extends Controller
         });
     }
 
-    public function confirmFinance($id)
+    public function confirmFinance(Request $request, $id)
     {
         $order = Order::findOrFail($id);
+
+        if ($order->staff_id && $order->staff_id !== $request->user()->id && !$request->user()->hasPermission('reports.view')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         if ($order->is_financed) {
             return response()->json(['message' => 'Финансы уже подтверждены'], 400);
@@ -304,7 +326,7 @@ class PosController extends Controller
     public function getAllProducts()
     {
         $products = Product::where('is_active', true)
-            ->get(['id', 'name', 'sku', 'sale_price', 'price', 'stock_quantity']);
+            ->get(['id', 'name', 'sku', 'sale_price', 'price', 'stock_quantity', 'unit', 'package_unit', 'package_size', 'package_price']);
 
         return response()->json($products);
     }

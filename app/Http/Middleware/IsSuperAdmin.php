@@ -5,15 +5,14 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class IsAdmin
+class IsSuperAdmin
 {
-    
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user() && ($request->user()->role === 'admin' || $request->user()->role === 'purchaser')) {
+        if ($request->user() && $request->user()->role === 'admin') {
             return $next($request);
         }
 
-        return response()->json(['message' => 'Forbidden. Admin or Purchaser access required.'], 403);
+        return response()->json(['message' => 'Forbidden. Admin access required.'], 403);
     }
 }

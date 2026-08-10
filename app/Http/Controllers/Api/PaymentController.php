@@ -113,6 +113,12 @@ class PaymentController extends Controller
     
     public function update(Request $request, Payment $payment)
     {
+        $user = Auth::user();
+        $isStaff = $user && in_array($user->role, ['admin', 'purchaser', 'cashier', 'manager']);
+        if ($user && !$isStaff && $payment->order->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $validated = $request->validate([
             'status' => 'sometimes|in:pending,processing,completed,failed,refunded',
             'transaction_id' => 'nullable|string|max:255',
