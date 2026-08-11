@@ -16,15 +16,20 @@ class OrderItem extends Model
         'product_name',
         'product_sku',
         'quantity',
+        'is_package',
+        'refunded_quantity',
         'purchase_price',
         'price',
         'total',
     ];
 
     protected $casts = [
-        'purchase_price' => 'decimal:2',
-        'price'          => 'decimal:2',
-        'total'          => 'decimal:2',
+        'quantity'          => 'decimal:3',
+        'refunded_quantity' => 'decimal:3',
+        'is_package'        => 'boolean',
+        'purchase_price'    => 'decimal:2',
+        'price'             => 'decimal:2',
+        'total'             => 'decimal:2',
     ];
 
     
@@ -35,6 +40,9 @@ class OrderItem extends Model
 
     public function product()
     {
-        return $this->belongsTo(Product::class);
+        // withTrashed: восстановление/списание остатков при отмене и
+        // возврате заказа должно находить товар, даже если он с тех пор
+        // был soft-deleted — иначе $item->product вернёт null.
+        return $this->belongsTo(Product::class)->withTrashed();
     }
 }

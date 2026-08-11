@@ -587,19 +587,19 @@ function buildElementContentHTML(el, product){
       return escapeHtml(product.name || '');
     case 'price': {
       const val = Number(product.price)||0;
-      const c = el.props.currency || cur;
+      const c = el.props.currency ?? cur;
       if(el.props.showKopecks){
         const whole = Math.floor(val);
         const kop = Math.round((val - whole)*100);
-        return `${whole}<span style="font-size:0.5em;vertical-align:top;">.${String(kop).padStart(2,'0')}</span> ${c}`;
+        return `${whole}<span style="font-size:0.5em;vertical-align:top;">.${String(kop).padStart(2,'0')}</span>${c?' '+c:''}`;
       }
-      return `${formatNumber(val)} ${c}`;
+      return `${formatNumber(val)}${c?' '+c:''}`;
     }
     case 'old_price': {
       const val = Number(product.oldPrice)||0;
       if(!val) return '';
-      const c = el.props.currency || cur;
-      return `<span style="text-decoration:line-through;">${formatNumber(val)} ${c}</span>`;
+      const c = el.props.currency ?? cur;
+      return `<span style="text-decoration:line-through;">${formatNumber(val)}${c?' '+c:''}</span>`;
     }
     case 'discount': {
       const d = computeDiscount(product);
@@ -746,7 +746,7 @@ function renderLabelNode(template, product, scale, unitSuffix, opts){
 /* ===================== ХОЛСТ: РЕНДЕР + ВЗАИМОДЕЙСТВИЕ ===================== */
 const canvasEl = document.getElementById('canvas');
 
-function renderCanvas(){
+function renderCanvasOnly(){
   const t = activeTemplate();
   if(!t){ canvasEl.innerHTML=''; return; }
   document.getElementById('tpl-name-display').textContent = t.name+' · '+t.width+'×'+t.height+' мм';
@@ -758,6 +758,10 @@ function renderCanvas(){
   const gridPx = state.settings.gridSize*state.zoom;
   canvasEl.style.backgroundSize = gridPx+'px '+gridPx+'px';
   while(node.firstChild) canvasEl.appendChild(node.firstChild);
+}
+
+function renderCanvas(){
+  renderCanvasOnly();
   renderLayerList();
   renderProps();
 }
@@ -920,6 +924,7 @@ function renderProps(){
   if(el.type==='price' || el.type==='old_price'){
     html += `<label class="field"><span>Валюта</span>
       <select data-bind="props.currency">
+        <option value="" ${!el.props.currency?'selected':''}>Без валюты</option>
         ${['₽','₴','₸','сом','€','$'].map(c=>`<option value="${c}" ${el.props.currency===c?'selected':''}>${c}</option>`).join('')}
       </select>
     </label>`;
@@ -1015,7 +1020,17 @@ function renderProps(){
       else val = inputEl.value;
       setNested(el, path, val);
       save();
-      renderCanvas();
+      // На 'input' (текст/число печатается посимвольно) панель свойств не
+      // перерисовываем — иначе panel.innerHTML пересоздаёт как раз то поле,
+      // в котором сейчас фокус, и он слетает после каждого символа. Полный
+      // renderCanvas() (с renderProps) нужен только на 'change', где
+      // видимость других полей может зависеть от нового значения
+      // (например чекбокс "из настроек" блокирует соседнее текстовое поле).
+      if(evName === 'input'){
+        renderCanvasOnly();
+      } else {
+        renderCanvas();
+      }
     });
   });
   panel.querySelectorAll('[data-rot]').forEach(btn=>{

@@ -42,10 +42,15 @@ class GenerateReportExport implements ShouldQueue
             $path     = 'report_exports/' . $fileName;
             Storage::disk('local')->put($path, $pdf);
 
+            $displayNames = [
+                'products_pdf' => 'Отчёт_по_товарам.pdf',
+                'debts_pdf'    => 'Отчёт_по_долгам.pdf',
+            ];
+
             $export->update([
                 'status'       => 'done',
                 'file_path'    => $path,
-                'file_name'    => $export->type . '.pdf',
+                'file_name'    => $displayNames[$export->type] ?? ($export->type . '.pdf'),
                 'completed_at' => now(),
             ]);
         } catch (\Throwable $e) {

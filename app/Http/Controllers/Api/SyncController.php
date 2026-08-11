@@ -179,11 +179,17 @@ class SyncController extends Controller
                         throw new \Exception("Товар не найден на сервере: {$item['product_uuid']} / " . ($item['sku'] ?? 'без SKU'));
                     }
 
+                    $isPackage = (bool) ($item['is_package'] ?? false);
+                    $baseQty   = ($isPackage && $product && $product->package_size)
+                        ? $item['quantity'] * (float) $product->package_size
+                        : $item['quantity'];
+
                     OrderItem::create([
                         'uuid' => $item['uuid'] ?? (string) Str::uuid(),
                         'order_id' => $order->id,
                         'product_id' => $product ? $product->id : null,
                         'quantity' => $item['quantity'],
+                        'is_package' => $isPackage,
                         'price' => $item['price'],
                         'total' => $item['quantity'] * $item['price'],
                         'product_name' => $item['name'] ?? ($product ? $product->name : 'Unknown'),
@@ -192,8 +198,8 @@ class SyncController extends Controller
                     ]);
 
                     if ($product) {
-                        $product->decrement('stock_quantity', $item['quantity']);
-                        $product->increment('sales_count', $item['quantity']);
+                        $product->decrement('stock_quantity', $baseQty);
+                        $product->increment('sales_count', $baseQty);
                     }
                 }
 
@@ -323,13 +329,18 @@ class SyncController extends Controller
                     'in_stock' => ($payload['stock_quantity'] ?? 0) > 0,
                     'is_active' => $payload['is_active'] ?? true,
                     'category_id' => $payload['category_id'] ?? null,
+                    'unit' => $payload['unit'] ?? 'шт',
+                    'package_unit' => $payload['package_unit'] ?? null,
+                    'package_size' => $payload['package_size'] ?? null,
+                    'package_price' => $payload['package_price'] ?? null,
+                    'package_purchase_price' => $payload['package_purchase_price'] ?? null,
                 ]);
                 break;
 
             case 'PRODUCT_UPDATE':
                 $product = $this->findProduct($payload);
                 if (!$product) throw new \Exception('Товар не найден: ' . ($payload['uuid'] ?? $payload['server_id'] ?? '?'));
-                $allowed = ['name', 'sku', 'barcode', 'price', 'sale_price', 'purchase_price', 'stock_quantity', 'is_active', 'is_hot', 'hot_order', 'hot_group'];
+                $allowed = ['name', 'sku', 'barcode', 'price', 'sale_price', 'purchase_price', 'stock_quantity', 'is_active', 'is_hot', 'hot_order', 'hot_group', 'unit', 'package_unit', 'package_size', 'package_price', 'package_purchase_price'];
                 $fields = array_intersect_key($payload['fields'] ?? [], array_flip($allowed));
                 if (!empty($payload['category_id'])) $fields['category_id'] = $payload['category_id'];
                 if (isset($fields['stock_quantity'])) $fields['in_stock'] = $fields['stock_quantity'] > 0;
@@ -359,17 +370,27 @@ class SyncController extends Controller
                     $purchase->supplier->increment('debt_to_supplier', $unpaid);
                 }
                 foreach ($payload['items'] as $item) {
+                    $isPackage = (bool) ($item['is_package'] ?? false);
                     \App\Models\PurchaseItem::create([
                         'purchase_id' => $purchase->id,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
+                        'is_package' => $isPackage,
                         'buy_price' => $item['buy_price'],
                         'total' => $item['quantity'] * $item['buy_price'],
                     ]);
                     $product = Product::find($item['product_id']);
                     if ($product) {
-                        $product->increment('stock_quantity', $item['quantity']);
-                        $product->update(['in_stock' => true, 'purchase_price' => $item['buy_price']]);
+                        $baseQty = ($isPackage && $product->package_size)
+                            ? $item['quantity'] * (float) $product->package_size
+                            : $item['quantity'];
+                        // buy_price для упаковки — цена за упаковку целиком, а
+                        // purchase_price товара — себестоимость базовой единицы
+                        $unitPurchasePrice = ($isPackage && $product->package_size)
+                            ? $item['buy_price'] / (float) $product->package_size
+                            : $item['buy_price'];
+                        $product->increment('stock_quantity', $baseQty);
+                        $product->update(['in_stock' => true, 'purchase_price' => $unitPurchasePrice]);
                     }
                 }
                 break;

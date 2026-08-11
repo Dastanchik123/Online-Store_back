@@ -33,6 +33,16 @@ class ReportExportController extends Controller
 
         GenerateReportExport::dispatch($export->id);
 
+        // Постоянного queue:work в контейнере больше нет (см. Dockerfile) —
+        // непрерывный опрос БД держал Neon compute активным круглосуточно и
+        // сжигал бесплатную квоту. Вместо этого запускаем разовый воркер,
+        // который обработает всё, что есть в очереди, и сам завершится.
+        // Абсолютный путь к php-cli, а не просто "php": php-fpm по умолчанию
+        // чистит окружение воркера (clear_env), PATH может быть недоступен
+        // дочернему процессу, запущенному через exec().
+        $artisan = escapeshellarg(base_path('artisan'));
+        exec("/usr/local/bin/php {$artisan} queue:work --stop-when-empty --tries=2 --timeout=180 > /dev/null 2>&1 &");
+
         return response()->json(['id' => $export->uuid, 'status' => $export->status], 201);
     }
 

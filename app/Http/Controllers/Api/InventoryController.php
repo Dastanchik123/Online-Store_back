@@ -48,7 +48,7 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'product_id'   => 'required|exists:products,id',
-            'new_quantity' => 'required|integer|min:0',
+            'new_quantity' => 'required|numeric|min:0',
             'reason'       => 'required|string',
         ]);
 

@@ -11,6 +11,13 @@ use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
+    // Кириллица в filename= ломается для части НТТP-клиентов, поэтому
+    // добавляем RFC 5987 filename* с UTF-8-именем и ASCII-запасной вариант.
+    private function contentDisposition(string $filename): string
+    {
+        $ascii = str_replace('"', '', mb_convert_encoding($filename, 'ISO-8859-1', 'UTF-8'));
+        return 'attachment; filename="' . $ascii . '"; filename*=UTF-8\'\'' . rawurlencode($filename);
+    }
 
     public function reconciliation(Supplier $supplier, Request $request)
     {
@@ -66,14 +73,15 @@ class ReportController extends Controller
         ];
 
         $pdf = Pdf::loadView('pdf.reconciliation', $data);
-        return $pdf->download("reconciliation_{$supplier->id}.pdf");
+        $supplierName = str_replace(['/', '\\'], '-', $supplier->name);
+        return $pdf->download("Сверка_{$supplierName}_№{$supplier->id}.pdf");
     }
 
     public function purchase(Purchase $purchase)
     {
         $purchase->load(['supplier', 'items.product']);
         $pdf = Pdf::loadView('pdf.purchase', ['purchase' => $purchase, 'settings' => $this->getReceiptSettings()]);
-        return $pdf->download("purchase_{$purchase->id}.pdf");
+        return $pdf->download("Накладная_закупка_№{$purchase->id}.pdf");
     }
 
     public function products(Request $request)
@@ -81,7 +89,7 @@ class ReportController extends Controller
         $pdf = (new \App\Support\ReportExportService())->productsPdf($request->query());
         return response($pdf, 200, [
             'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="products_report.pdf"',
+            'Content-Disposition' => $this->contentDisposition('Отчёт_по_товарам.pdf'),
         ]);
     }
 
@@ -123,7 +131,7 @@ class ReportController extends Controller
             ];
         }
 
-        return $this->exportExcel($rows, $headings, "products_report_" . date('Y-m-d'));
+        return $this->exportExcel($rows, $headings, "Отчёт_по_товарам_" . date('Y-m-d'));
     }
 
     public function debtsPdf(Request $request)
@@ -131,7 +139,7 @@ class ReportController extends Controller
         $pdf = (new \App\Support\ReportExportService())->debtsPdf($request->query());
         return response($pdf, 200, [
             'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="debts_report_' . date('Y-m-d') . '.pdf"',
+            'Content-Disposition' => $this->contentDisposition('Отчёт_по_долгам_' . date('Y-m-d') . '.pdf'),
         ]);
     }
 
@@ -161,7 +169,7 @@ class ReportController extends Controller
         $debts          = $query->get();
         $isGrouped      = $request->boolean('isGrouped');
         $expandedGroups = $request->get('expandedGroups', []);
-        $filename       = "debts_report_" . date('Y-m-d');
+        $filename       = "Отчёт_по_долгам_" . date('Y-m-d');
 
         $rows = [];
         if ($isGrouped) {
@@ -240,7 +248,7 @@ class ReportController extends Controller
         $settings = $this->getReceiptSettings();
 
         $pdf = Pdf::loadView('pdf.order', array_merge(['order' => $order, 'settings' => $settings], $settings));
-        return $pdf->stream("order_invoice_{$order->id}.pdf");
+        return $pdf->stream("Накладная_заказ_№{$order->id}.pdf");
     }
 
     public function thermalReceipt(Order $order)
@@ -255,7 +263,7 @@ class ReportController extends Controller
 
         $pdf = Pdf::loadView('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
         $pdf->setPaper([0, 0, 226.77, $height], 'portrait');
-        return $pdf->stream("receipt_{$order->id}.pdf");
+        return $pdf->stream("Чек_№{$order->id}.pdf");
     }
 
     public function orderHtml(Order $order)
@@ -303,7 +311,7 @@ class ReportController extends Controller
     {
         $pdf = Pdf::loadView('pdf.barcode', ['product' => $product]);
         $pdf->setPaper([0, 0, 164.41, 113.39], 'portrait');
-        return $pdf->stream("barcode_{$product->sku}.pdf");
+        return $pdf->stream("Штрихкод_{$product->sku}.pdf");
     }
 
     private function exportExcel($rows, $headings, $filename)
@@ -327,7 +335,7 @@ class ReportController extends Controller
 
         return response($output, 200, [
             'Content-Type'        => 'application/vnd.ms-excel',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '.xls"',
+            'Content-Disposition' => $this->contentDisposition($filename . '.xls'),
         ]);
     }
 }

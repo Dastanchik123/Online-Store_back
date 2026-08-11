@@ -11,9 +11,17 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseController extends Controller
 {
+    private function baseQuantity(?Product $product, float $quantity, bool $isPackage): float
+    {
+        if ($isPackage && $product && $product->package_size) {
+            return $quantity * (float) $product->package_size;
+        }
+        return $quantity;
+    }
+
     public function index(Request $request)
     {
-        $query = Purchase::with(['supplier:id,name', 'items.product:id,name,sku,price,sale_price,purchase_price,image,images']);
+        $query = Purchase::with(['supplier:id,name', 'items.product:id,name,sku,price,sale_price,purchase_price,image,images,unit,package_unit,package_size']);
 
         if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
@@ -45,7 +53,8 @@ class PurchaseController extends Controller
             'supplier_id'        => 'required|exists:suppliers,id',
             'items'              => 'required|array',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity'   => 'required|integer|min:1',
+            'items.*.quantity'   => 'required|numeric|min:0.001',
+            'items.*.is_package' => 'nullable|boolean',
             'items.*.buy_price'  => 'required|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
             'paid_amount'        => 'required|numeric|min:0',
@@ -73,10 +82,13 @@ class PurchaseController extends Controller
                 }
 
                 foreach ($validated['items'] as $itemData) {
+                    $isPackage = (bool) ($itemData['is_package'] ?? false);
+
                     PurchaseItem::create([
                         'purchase_id' => $purchase->id,
                         'product_id'  => $itemData['product_id'],
                         'quantity'    => $itemData['quantity'],
+                        'is_package'  => $isPackage,
                         'buy_price'   => $itemData['buy_price'],
                         'total'       => $itemData['quantity'] * $itemData['buy_price'],
                     ]);
@@ -84,7 +96,7 @@ class PurchaseController extends Controller
 
                     $product = Product::find($itemData['product_id']);
                     if ($product) {
-                        $product->increment('stock_quantity', $itemData['quantity']);
+                        $product->increment('stock_quantity', $this->baseQuantity($product, $itemData['quantity'], $isPackage));
                         $product->update([
                             'in_stock' => true,
                             ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
@@ -131,7 +143,8 @@ class PurchaseController extends Controller
             'notes'              => 'nullable|string',
             'items'              => 'sometimes|array',
             'items.*.product_id' => 'required_with:items|exists:products,id',
-            'items.*.quantity'   => 'required_with:items|integer|min:1',
+            'items.*.quantity'   => 'required_with:items|numeric|min:0.001',
+            'items.*.is_package' => 'nullable|boolean',
             'items.*.buy_price'  => 'required_with:items|numeric|min:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
         ]);
@@ -146,16 +159,17 @@ class PurchaseController extends Controller
                 foreach ($purchase->items as $oldItem) {
                     $product = Product::find($oldItem->product_id);
                     if ($product) {
-                        $product->decrement('stock_quantity', $oldItem->quantity);
+                        $product->decrement('stock_quantity', $this->baseQuantity($product, (float) $oldItem->quantity, (bool) $oldItem->is_package));
                     }
                 }
 
-                
+
                 $purchase->items()->delete();
 
-                
+
                 $totalAmount = 0;
                 foreach ($validated['items'] as $itemData) {
+                    $isPackage    = (bool) ($itemData['is_package'] ?? false);
                     $subtotal     = $itemData['quantity'] * $itemData['buy_price'];
                     $totalAmount += $subtotal;
 
@@ -163,13 +177,14 @@ class PurchaseController extends Controller
                         'purchase_id' => $purchase->id,
                         'product_id'  => $itemData['product_id'],
                         'quantity'    => $itemData['quantity'],
+                        'is_package'  => $isPackage,
                         'buy_price'   => $itemData['buy_price'],
                         'total'       => $subtotal,
                     ]);
 
                     $product = Product::find($itemData['product_id']);
                     if ($product) {
-                        $product->increment('stock_quantity', $itemData['quantity']);
+                        $product->increment('stock_quantity', $this->baseQuantity($product, $itemData['quantity'], $isPackage));
                         $product->update([
                             'in_stock' => true,
                             ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
@@ -275,7 +290,7 @@ class PurchaseController extends Controller
             foreach ($purchase->items as $item) {
                 $product = Product::find($item->product_id);
                 if ($product) {
-                    $product->decrement('stock_quantity', $item->quantity);
+                    $product->decrement('stock_quantity', $this->baseQuantity($product, (float) $item->quantity, (bool) $item->is_package));
                 }
             }
 

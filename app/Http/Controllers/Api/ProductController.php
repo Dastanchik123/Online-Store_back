@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Intervention\Image\Facades\Image;
 
 class ProductController extends Controller
@@ -121,7 +122,8 @@ class ProductController extends Controller
         if ($light) {
             $query->select([
                 'id', 'uuid', 'category_id', 'name', 'sku',
-                'price', 'sale_price', 'stock_quantity', 'is_active',
+                'price', 'sale_price', 'stock_quantity', 'unit', 'is_active',
+                'package_unit', 'package_size', 'package_price', 'package_purchase_price',
             ])->with('category:id,name');
         }
 
@@ -131,7 +133,8 @@ class ProductController extends Controller
                 // description и прочие длинные поля раздували ответ до мегабайт
                 $query->select([
                     'id', 'uuid', 'category_id', 'name', 'slug', 'sku',
-                    'price', 'sale_price', 'purchase_price', 'stock_quantity',
+                    'price', 'sale_price', 'purchase_price', 'stock_quantity', 'unit',
+                    'package_unit', 'package_size', 'package_price', 'package_purchase_price',
                     'is_active', 'in_stock', 'is_hot', 'hot_order', 'hot_group',
                     'sales_count', 'image', 'images', 'created_at', 'updated_at',
                 ]);
@@ -164,14 +167,14 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name'              => 'required|string|max:255',
-            'slug'              => 'nullable|string|max:255|unique:products',
+            'slug'              => ['nullable', 'string', 'max:255', Rule::unique('products', 'slug')->whereNull('deleted_at')],
             'description'       => 'nullable|string',
             'short_description' => 'nullable|string',
-            'sku'               => 'required|string|max:255|unique:products',
+            'sku'               => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')],
             'purchase_price'    => 'nullable|numeric|min:0',
             'price'             => 'required|numeric|min:0',
             'sale_price'        => 'nullable|numeric|min:0',
-            'stock_quantity'    => 'nullable|integer|min:0',
+            'stock_quantity'    => 'nullable|numeric|min:0',
             'in_stock'          => 'boolean',
             'is_active'         => 'boolean',
             'is_hot'            => 'boolean',
@@ -184,6 +187,11 @@ class ProductController extends Controller
             'category_id'       => 'required|exists:categories,id',
             'weight'            => 'nullable|numeric|min:0',
             'dimensions'        => 'nullable|string',
+            'unit'              => 'nullable|string|max:20',
+            'package_unit'      => 'nullable|string|max:20',
+            'package_size'      => 'nullable|required_with:package_unit|numeric|min:0.001',
+            'package_price'     => 'nullable|required_with:package_unit|numeric|min:0',
+            'package_purchase_price' => 'nullable|numeric|min:0',
             'attributes'        => 'nullable|array',
             'hot_order'         => 'nullable|integer',
             'hot_group'         => 'nullable|string|max:50',
@@ -256,10 +264,10 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name'              => 'sometimes|required|string|max:255',
-            'slug'              => 'sometimes|nullable|string|max:255|unique:products,slug,' . $product->id,
+            'slug'              => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('products', 'slug')->whereNull('deleted_at')->ignore($product->id)],
             'description'       => 'nullable|string',
             'short_description' => 'nullable|string',
-            'sku'               => 'sometimes|required|string|max:255|unique:products,sku,' . $product->id,
+            'sku'               => ['sometimes', 'required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')->ignore($product->id)],
             'purchase_price'    => 'nullable|numeric|min:0',
             'price'             => 'sometimes|required|numeric|min:0',
             'sale_price'        => 'nullable|numeric|min:0',
@@ -274,6 +282,11 @@ class ProductController extends Controller
             'category_id'       => 'sometimes|required|exists:categories,id',
             'weight'            => 'nullable|numeric|min:0',
             'dimensions'        => 'nullable|string',
+            'unit'              => 'nullable|string|max:20',
+            'package_unit'      => 'nullable|string|max:20',
+            'package_size'      => 'nullable|required_with:package_unit|numeric|min:0.001',
+            'package_price'     => 'nullable|required_with:package_unit|numeric|min:0',
+            'package_purchase_price' => 'nullable|numeric|min:0',
             'attributes'        => 'nullable|array',
             'hot_order'         => 'nullable|integer',
             'hot_group'         => 'nullable|string|max:50',

@@ -71,16 +71,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:categories.manage')->group(function () {
             Route::post('/categories', [CategoryController::class, 'store']);
             Route::put('/categories/{category}', [CategoryController::class, 'update']);
-            Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
         });
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])
+            ->middleware('permission:categories.delete');
 
         Route::middleware('permission:products.edit')->group(function () {
             Route::post('/products', [ProductController::class, 'store']);
             Route::put('/products/{product}', [ProductController::class, 'update']);
-            Route::delete('/products/{product}', [ProductController::class, 'destroy']);
             Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
             Route::post('/products/ai-description', [ProductController::class, 'aiDescription']);
         });
+        Route::delete('/products/{product}', [ProductController::class, 'destroy'])
+            ->middleware('permission:products.delete');
 
         Route::post('/reviews/{review}/approve', [ReviewController::class, 'approve']);
 
@@ -93,23 +95,31 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('permission:suppliers.manage')->group(function () {
-            Route::apiResource('suppliers', SupplierController::class);
+            Route::apiResource('suppliers', SupplierController::class)->except(['destroy']);
         });
+        Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy'])
+            ->middleware('permission:suppliers.delete')
+            ->name('suppliers.destroy');
 
         Route::middleware('permission:purchases.manage')->group(function () {
-            Route::apiResource('purchases', PurchaseController::class);
+            Route::apiResource('purchases', PurchaseController::class)->except(['destroy']);
             Route::post('purchases/{purchase}/pay', [PurchaseController::class, 'registerPayment']);
         });
+        Route::delete('/purchases/{purchase}', [PurchaseController::class, 'destroy'])
+            ->middleware('permission:purchases.delete')
+            ->name('purchases.destroy');
 
         Route::middleware('permission:inventory.manage')->group(function () {
-            Route::apiResource('inventory/adjustments', InventoryController::class)->names([
+            Route::apiResource('inventory/adjustments', InventoryController::class)->except(['destroy'])->names([
                 'index'   => 'inventory.adjustments.index',
                 'store'   => 'inventory.adjustments.store',
                 'show'    => 'inventory.adjustments.show',
                 'update'  => 'inventory.adjustments.update',
-                'destroy' => 'inventory.adjustments.destroy',
             ]);
         });
+        Route::delete('/inventory/adjustments/{adjustment}', [InventoryController::class, 'destroy'])
+            ->middleware('permission:inventory.delete')
+            ->name('inventory.adjustments.destroy');
 
         Route::middleware('permission:debts.view')->group(function () {
             Route::get('accounting/debts', [AccountingController::class, 'debts']);

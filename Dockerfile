@@ -25,11 +25,11 @@ COPY nginx.conf /etc/nginx/sites-available/default
 
 EXPOSE 8080
 
-# queue:work в фоне того же контейнера/диска — тяжёлые PDF-отчёты (см.
-# App\Jobs\GenerateReportExport) генерируются здесь же, файл сразу доступен
-# и для web-процесса (download endpoint). Отдельная Fly-машина под воркер не
-# нужна: report-запросы редкие, а два процесса на разных дисках не видели бы
-# один и тот же сгенерированный файл (Fly volume attach'ится к одной машине).
+# Постоянного queue:work нет: непрерывный опрос БД не давал Neon (serverless
+# Postgres с автозасыпанием) уходить в простой, из-за чего компьют работал
+# круглосуточно и сжигал бесплатную квоту часов за несколько дней. Вместо
+# этого ReportExportController::store() сам запускает разовый
+# `queue:work --stop-when-empty` при постановке job в очередь — воркер
+# обрабатывает задачу и завершается, БД не трогается в простое.
 CMD chown -R www-data:www-data /var/www/html/storage && \
-    (while true; do php artisan queue:work --tries=2 --timeout=180 --sleep=3; sleep 2; done &) && \
     php-fpm -D && nginx -g "daemon off;"

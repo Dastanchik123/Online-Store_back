@@ -44,6 +44,8 @@
         }
         table.items-table th.right { text-align: right; }
         table.items-table th.center { text-align: center; }
+        table.items-table th.unit-col,
+        .item-row td.unit-col { width: 1%; white-space: nowrap; padding-left: 2mm; }
 
         .item-row td { padding: 1.5mm 0; font-size: 10.5px; }
         .item-row td.center { text-align: center; }
@@ -115,14 +117,23 @@
             <tr>
                 <th>Наименование</th>
                 <th class="center">Кол-во</th>
+                <th class="unit-col">Ед.</th>
+                <th class="right">Цена</th>
                 <th class="right">Сумма</th>
             </tr>
         </thead>
         <tbody>
             @foreach($order->items as $item)
+            @php
+                $itemUnit = $item->is_package
+                    ? ($item->product?->package_unit ?? $item->product?->unit ?? 'шт')
+                    : ($item->product?->unit ?? 'шт');
+            @endphp
             <tr class="item-row">
                 <td>{{ $item->product_name }}</td>
                 <td class="center">{{ (float)$item->quantity }}</td>
+                <td class="unit-col">{{ $itemUnit }}</td>
+                <td class="right">{{ number_format($item->price, 0, '.', ' ') }}</td>
                 <td class="right">{{ number_format($item->total, 0, '.', ' ') }}</td>
             </tr>
             @endforeach

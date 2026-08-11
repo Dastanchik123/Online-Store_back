@@ -3,12 +3,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 use App\Traits\HasUuid;
 
 class Product extends Model
 {
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, SoftDeletes;
 
     protected $fillable = [
         'uuid',
@@ -28,6 +29,11 @@ class Product extends Model
         'category_id',
         'weight',
         'dimensions',
+        'unit',
+        'package_unit',
+        'package_size',
+        'package_price',
+        'package_purchase_price',
         'attributes',
         'views_count',
         'sales_count',
@@ -43,6 +49,10 @@ class Product extends Model
         'purchase_price'       => 'decimal:2',
         'price'                => 'decimal:2',
         'sale_price'           => 'decimal:2',
+        'stock_quantity'       => 'decimal:3',
+        'package_size'         => 'decimal:3',
+        'package_price'        => 'decimal:2',
+        'package_purchase_price' => 'decimal:2',
         'in_stock'             => 'boolean',
         'is_active'            => 'boolean',
         'is_rentable'          => 'boolean',

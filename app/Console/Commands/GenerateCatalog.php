@@ -18,6 +18,8 @@ class GenerateCatalog extends Command
     private string $pexelsKey;
     private int $created = 0;
     private int $limit;
+    private int $skuCounter = 0;
+    private bool $skuInitialized = false;
 
     public function handle(): int
     {
@@ -141,13 +143,42 @@ class GenerateCatalog extends Command
         }
     }
 
+    /**
+     * Тот же алгоритм, что и ProductController::generateSku — последовательный
+     * EAN-13 (префикс '2') с контрольной цифрой, чтобы сгенерированные товары
+     * получали штрихкоды, реально печатаемые/сканируемые как EAN-13.
+     */
     private function uniqueSku(): string
     {
+        $prefix = '2';
+        $bodyLength = 11;
+
+        if (!$this->skuInitialized) {
+            $this->skuCounter = Product::where('sku', 'like', $prefix.'%')
+                ->pluck('sku')
+                ->filter(fn ($sku) => preg_match('/^2\d{12}$/', $sku))
+                ->map(fn ($sku) => (int) substr($sku, 1, $bodyLength))
+                ->max() ?? 0;
+            $this->skuInitialized = true;
+        }
+
         do {
-            $sku = (string) random_int(1000000000, 9999999999);
+            $this->skuCounter++;
+            $body = str_pad($this->skuCounter, $bodyLength, '0', STR_PAD_LEFT);
+            $sku  = $prefix.$body.$this->eanCheckDigit($prefix.$body);
         } while (Product::where('sku', $sku)->exists());
 
         return $sku;
+    }
+
+    private function eanCheckDigit(string $digits12): int
+    {
+        $sum = 0;
+        foreach (str_split($digits12) as $i => $digit) {
+            $sum += ($i % 2 === 0) ? (int) $digit : (int) $digit * 3;
+        }
+
+        return (10 - ($sum % 10)) % 10;
     }
 
     private function uniqueProductSlug(string $name): string

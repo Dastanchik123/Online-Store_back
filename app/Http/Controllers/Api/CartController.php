@@ -43,7 +43,7 @@ class CartController extends Controller
     {
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|numeric|min:0.001',
         ]);
 
         $product = Product::findOrFail($validated['product_id']);
@@ -80,7 +80,7 @@ class CartController extends Controller
     public function updateItem(Request $request, $itemId)
     {
         $validated = $request->validate([
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|numeric|min:0.001',
         ]);
 
         $cartItem = CartItem::findOrFail($itemId);

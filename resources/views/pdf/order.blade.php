@@ -168,7 +168,7 @@
             <tr>
                 <td class="c-num">{{ $index + 1 }}</td>
                 <td class="c-name">{{ $item->product_name }}</td>
-                <td class="c-unit">шт.</td>
+                <td class="c-unit">{{ $item->is_package ? ($item->product?->package_unit ?? $item->product?->unit ?? 'шт') : ($item->product?->unit ?? 'шт') }}</td>
                 <td class="c-price">{{ number_format($item->price, 2, ',', ' ') }}</td>
                 <td class="c-qty">{{ $item->quantity }}</td>
                 <td class="c-sum">{{ number_format($item->price * $item->quantity, 2, ',', ' ') }}</td>
