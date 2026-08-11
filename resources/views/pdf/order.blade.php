@@ -138,7 +138,7 @@
             <td class="label">Адрес покупателя:</td>
             <td>
                 @if($order->shippingAddress)
-                    {{ $order->shippingAddress->city }}, {{ $order->shippingAddress->address_line_1 }}
+                    {{ implode(', ', array_filter([$order->shippingAddress->city, $order->shippingAddress->address_line_1])) }}
                 @else
                     Самовывоз
                 @endif

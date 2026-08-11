@@ -68,7 +68,7 @@
         $customerName = $addressName !== '' ? $addressName : ($order->user->name ?? 'Розничный покупатель');
         $customerPhone = $order->shippingAddress->phone ?? $order->user->phone ?? '';
         $customerAddress = $order->shippingAddress
-            ? trim($order->shippingAddress->city . ', ' . $order->shippingAddress->address_line_1)
+            ? implode(', ', array_filter([$order->shippingAddress->city, $order->shippingAddress->address_line_1]))
             : '';
     @endphp
 
@@ -93,7 +93,7 @@
             <td colspan="2">Дата: {{ now()->format('d.m.Y H:i') }}</td>
         </tr>
         <tr>
-            <td colspan="2">Кассир: {{ $order->staff->name ?? 'Админ' }}</td>
+            <td colspan="2">Продавец: {{ $settings['site_name'] ?? 'Мой Магазин' }}</td>
         </tr>
         <tr>
             <td colspan="2">Покупатель: {{ $customerName }}</td>
