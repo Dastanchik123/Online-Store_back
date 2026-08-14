@@ -122,7 +122,7 @@ class ProductController extends Controller
         if ($light) {
             $query->select([
                 'id', 'uuid', 'category_id', 'name', 'sku',
-                'price', 'sale_price', 'stock_quantity', 'unit', 'is_active',
+                'price', 'sale_price', 'purchase_price', 'stock_quantity', 'unit', 'is_active',
                 'package_unit', 'package_size', 'package_price', 'package_purchase_price',
             ])->with('category:id,name');
         }
