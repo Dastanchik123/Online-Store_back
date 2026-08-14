@@ -5,11 +5,16 @@ namespace App\Events;
 use App\Models\Order;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NewOrderPlaced implements ShouldBroadcast
+// ShouldBroadcastNow (не ShouldBroadcast): рассылка идёт синхронно в этом же
+// запросе, а не через BroadcastEvent-job в очереди — на проде queue.default
+// был "database" без воркера, и события молча зависали, никогда не долетая
+// до Soketi (обнаружено вживую: прямой Pusher::trigger() доходил, обычный
+// broadcast()/event() — нет).
+class NewOrderPlaced implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

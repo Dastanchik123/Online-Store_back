@@ -1,6 +1,7 @@
 node_modules
 vendor
 .env
+.env.*
 .git
 storage/*.key
 /storage/framework/cache/data/*
