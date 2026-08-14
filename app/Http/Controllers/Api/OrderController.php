@@ -247,7 +247,7 @@ class OrderController extends Controller
             $order->load('items.product', 'shippingAddress', 'billingAddress');
 
             try {
-                broadcast(new \App\Events\NewOrderPlaced($order));
+                event(new \App\Events\NewOrderPlaced($order));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (NewOrderPlaced): ' . $e->getMessage());
             }
@@ -518,7 +518,7 @@ class OrderController extends Controller
             }
 
             try {
-                broadcast(new \App\Events\OrderStatusUpdated($order));
+                event(new \App\Events\OrderStatusUpdated($order));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }
@@ -552,7 +552,7 @@ class OrderController extends Controller
             DB::commit();
 
             try {
-                broadcast(new \App\Events\OrderStatusUpdated($order));
+                event(new \App\Events\OrderStatusUpdated($order));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }

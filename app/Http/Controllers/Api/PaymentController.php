@@ -85,7 +85,7 @@ class PaymentController extends Controller
             DB::commit();
 
             try {
-                broadcast(new \App\Events\OrderStatusUpdated($order));
+                event(new \App\Events\OrderStatusUpdated($order));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }
@@ -138,7 +138,7 @@ class PaymentController extends Controller
             }
 
             try {
-                broadcast(new \App\Events\OrderStatusUpdated($payment->order));
+                event(new \App\Events\OrderStatusUpdated($payment->order));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }

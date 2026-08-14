@@ -52,7 +52,7 @@ class AppServiceProvider extends ServiceProvider
             return function () use ($scope) {
                 \App\Support\ApiCache::bump();
                 try {
-                    broadcast(new \App\Events\PosSyncUpdated($scope));
+                    event(new \App\Events\PosSyncUpdated($scope));
                 } catch (\Throwable $e) {
                     // Soketi недоступен — не роняем основную операцию
                 }

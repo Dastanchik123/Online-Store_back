@@ -303,7 +303,7 @@ class SyncController extends Controller
         $applied = collect($results)->concat($operationResults)->contains(fn($r) => ($r['status'] ?? '') === 'success');
         if ($applied) {
             try {
-                broadcast(new \App\Events\PosSyncUpdated('push'));
+                event(new \App\Events\PosSyncUpdated('push'));
             } catch (\Throwable $e) {
                 // Soketi недоступен — не критично
             }
@@ -411,7 +411,7 @@ class SyncController extends Controller
                     if ($debt->order_id) {
                         $debt->order()->update(['payment_status' => 'paid']);
                         try {
-                            broadcast(new \App\Events\OrderStatusUpdated($debt->order));
+                            event(new \App\Events\OrderStatusUpdated($debt->order));
                         } catch (\Throwable $e) {
                             \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
                         }
