@@ -21,6 +21,8 @@ class Order extends Model
         'status',
         'payment_status',
         'payment_method',
+        'channel',
+        'terminal_id',
         'subtotal',
         'total_amount',
         'tax',

@@ -14,22 +14,38 @@ use Intervention\Image\Facades\Image;
 
 class ProductController extends Controller
 {
+    // Себестоимость (purchase_price/package_purchase_price) видна только
+    // сотрудникам с доступом к товарам — этот роут публичный (без
+    // auth:sanctum в middleware роута), поэтому проверяем токен вручную
+    // через гвард, не полагаясь на request()->user().
+    private function canSeeCostPrice(Request $request): bool
+    {
+        $user = $request->user('sanctum');
+        return $user && ($user->role === 'admin' || $user->hasPermission('products.view') || $user->hasPermission('products.edit'));
+    }
+
     public function index(Request $request)
     {
+        $canSeeCost = $this->canSeeCostPrice($request);
+
         // Кэш ответа: повторные запросы с теми же параметрами отдаются из кэша мгновенно;
-        // любое изменение каталога сбрасывает кэш через ApiCache::bump() (см. AppServiceProvider)
+        // любое изменение каталога сбрасывает кэш через ApiCache::bump() (см. AppServiceProvider).
+        // Ключ кэша учитывает видимость себестоимости — иначе кэш, прогретый
+        // публичным гостем, мог бы отдать сотруднику ответ без purchase_price,
+        // и наоборот, кэш от сотрудника — утечь себестоимость гостю.
         $payload = \App\Support\ApiCache::remember(
             'products',
-            $request->getQueryString() ?? '',
+            ($canSeeCost ? 'staff:' : 'public:') . ($request->getQueryString() ?? ''),
             300,
-            fn () => $this->buildIndexPayload($request)
+            fn () => $this->buildIndexPayload($request, $canSeeCost)
         );
 
         return response()->json($payload);
     }
 
-    private function buildIndexPayload(Request $request): array
+    private function buildIndexPayload(Request $request, bool $canSeeCost = false): array
     {
+        $hiddenCostFields = ['purchase_price', 'package_purchase_price'];
         $query = Product::query()->with('category');
 
         if ($request->has('category_id')) {
@@ -145,6 +161,9 @@ class ProductController extends Controller
             if ($light) {
                 $products->makeHidden(['image_url', 'images_urls']);
             }
+            if (! $canSeeCost) {
+                $products->makeHidden($hiddenCostFields);
+            }
 
             return [
                 'data'         => $products->toArray(),
@@ -159,6 +178,9 @@ class ProductController extends Controller
 
         if ($light) {
             $products->getCollection()->makeHidden(['image_url', 'images_urls']);
+        }
+        if (! $canSeeCost) {
+            $products->getCollection()->makeHidden($hiddenCostFields);
         }
 
         return $products->toArray();
@@ -253,10 +275,13 @@ class ProductController extends Controller
         return response()->json($product->load('category'), 201);
     }
 
-    public function show(Product $product)
+    public function show(Request $request, Product $product)
     {
         $product->increment('views_count');
         $product->load('category', 'reviews.user');
+        if (! $this->canSeeCostPrice($request)) {
+            $product->makeHidden(['purchase_price', 'package_purchase_price']);
+        }
         return response()->json($product);
     }
 

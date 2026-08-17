@@ -11,7 +11,13 @@ class AppServiceProvider extends ServiceProvider
 
     public function register()
     {
-
+        // Временный QR-провайдер оплаты self-service (§35 ТЗ) — когда появится
+        // реальный банк/платёжный шлюз, меняется одной строкой здесь, без
+        // правок в SelfServiceOrderService/контроллере/фронте.
+        $this->app->bind(
+            \App\Contracts\PaymentProviderInterface::class,
+            \App\Services\Payments\TemporaryQrPaymentProvider::class
+        );
     }
 
     public function boot()

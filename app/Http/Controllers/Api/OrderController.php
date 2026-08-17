@@ -49,10 +49,18 @@ class OrderController extends Controller
         if ($request->filled('source')) {
             if ($request->source === 'pos') {
                 $query->where('notes', 'like', '%POS%');
+            } elseif ($request->source === 'self_service') {
+                // Единственный канал, размеченный настоящей колонкой (channel),
+                // а не эвристикой по notes — self-service заказы создаются без
+                // staff_id и текст notes не содержит "POS", поэтому без этого
+                // отдельного условия они попадали бы в ветку 'online' ниже.
+                $query->where('channel', 'self_service');
             } elseif ($request->source === 'online') {
                 $query->where(function ($q) {
                     $q->whereNull('notes')
                         ->orWhere('notes', 'not like', '%POS%');
+                })->where(function ($q) {
+                    $q->whereNull('channel')->orWhere('channel', '!=', 'self_service');
                 });
             }
         }

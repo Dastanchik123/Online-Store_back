@@ -53,6 +53,23 @@ Route::get('/banners', [BannerController::class, 'index']);
 
 Route::get('/orders/track/{orderNumber}', [OrderController::class, 'trackByNumber']);
 
+// Касса самообслуживания — гость без логина, поэтому вне auth:sanctum.
+// Каталог self-service использует существующие публичные /products,
+// /categories, /settings/public выше — здесь только то, что специфично
+// для self-service: создание заказа, оплата, статус.
+Route::prefix('self-service')->middleware('throttle:60,1')->group(function () {
+    Route::post('/orders', [\App\Http\Controllers\Api\SelfServiceController::class, 'store']);
+    Route::get('/orders/{orderUuid}', [\App\Http\Controllers\Api\SelfServiceController::class, 'show']);
+    Route::get('/orders/{orderUuid}/payment-status', [\App\Http\Controllers\Api\SelfServiceController::class, 'paymentStatus']);
+    Route::post('/orders/{orderUuid}/cancel', [\App\Http\Controllers\Api\SelfServiceController::class, 'cancel']);
+    Route::get('/orders/{orderUuid}/receipt', [\App\Http\Controllers\Api\SelfServiceController::class, 'receipt']);
+
+    // Подтверждение QR-оплаты — открывается на телефоне покупателя по ссылке
+    // из QR, доступ даёт только знание токена (шифрованный, с TTL), не логин.
+    Route::get('/pay/{token}', [\App\Http\Controllers\Api\SelfServiceController::class, 'payInfo']);
+    Route::post('/pay/{token}/confirm', [\App\Http\Controllers\Api\SelfServiceController::class, 'confirmPayment']);
+});
+
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
