@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreCouponRequest;
+use App\Http\Requests\UpdateCouponRequest;
 use App\Models\Coupon;
 use Illuminate\Http\Request;
 
@@ -41,43 +43,16 @@ class CouponController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreCouponRequest $request)
     {
-        $validated = $request->validate([
-            'code'             => 'required|string|unique:coupons',
-            'type'             => 'required|in:fixed,percent',
-            'value'            => array_filter(['required', 'numeric', 'min:0', $this->percentLimit($request->input('type'))]),
-            'min_order_amount' => 'nullable|numeric|min:0',
-            'is_active'        => 'boolean',
-            'expires_at'       => 'nullable|date',
-        ]);
-
-        $coupon = Coupon::create($validated);
+        $coupon = Coupon::create($request->validated());
         return response()->json($coupon, 201);
     }
 
-    public function update(Request $request, Coupon $coupon)
+    public function update(UpdateCouponRequest $request, Coupon $coupon)
     {
-        $effectiveType = $request->input('type', $coupon->type);
-
-        $validated = $request->validate([
-            'code'             => 'sometimes|required|string|unique:coupons,code,' . $coupon->id,
-            'type'             => 'sometimes|required|in:fixed,percent',
-            'value'            => array_filter(['sometimes', 'required', 'numeric', 'min:0', $this->percentLimit($effectiveType)]),
-            'min_order_amount' => 'nullable|numeric|min:0',
-            'is_active'        => 'boolean',
-            'expires_at'       => 'nullable|date',
-        ]);
-
-        $coupon->update($validated);
+        $coupon->update($request->validated());
         return response()->json($coupon);
-    }
-
-    // Скидка в процентах не должна превышать 100 — иначе купон может обнулить
-    // или увести заказ в минус ниже себестоимости.
-    private function percentLimit(?string $type): string
-    {
-        return $type === 'percent' ? 'max:100' : '';
     }
 
     public function destroy(Coupon $coupon)

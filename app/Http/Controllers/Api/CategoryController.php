@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreCategoryRequest;
+use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -39,17 +41,9 @@ class CategoryController extends Controller
         return response()->json($payload);
     }
 
-    public function store(Request $request)
+    public function store(StoreCategoryRequest $request)
     {
-        $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'slug'        => 'nullable|string|max:255|unique:categories',
-            'description' => 'nullable|string',
-            'image'       => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
-            'parent_id'   => 'nullable|exists:categories,id',
-            'is_active'   => 'boolean',
-            'sort_order'  => 'integer',
-        ]);
+        $validated = $request->validated();
 
         if (empty($validated['slug'])) {
             $baseSlug = Str::slug($validated['name']);
@@ -83,17 +77,9 @@ class CategoryController extends Controller
         return response()->json($category);
     }
 
-    public function update(Request $request, Category $category)
+    public function update(UpdateCategoryRequest $request, Category $category)
     {
-        $validated = $request->validate([
-            'name'        => 'sometimes|required|string|max:255',
-            'slug'        => 'sometimes|nullable|string|max:255|unique:categories,slug,' . $category->id,
-            'description' => 'nullable|string',
-            'image'       => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
-            'parent_id'   => 'nullable|exists:categories,id',
-            'is_active'   => 'boolean',
-            'sort_order'  => 'integer',
-        ]);
+        $validated = $request->validated();
 
         if (isset($validated['name']) && empty($validated['slug'])) {
             $baseSlug = Str::slug($validated['name']);

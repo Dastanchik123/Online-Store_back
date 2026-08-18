@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StorePurchaseRequest;
+use App\Http\Requests\UpdatePurchaseRequest;
 use App\Models\FinancialTransaction;
 use App\Models\Product;
 use App\Models\Purchase;
@@ -47,19 +49,9 @@ class PurchaseController extends Controller
         return $query->latest()->paginate($request->get('per_page', 15));
     }
 
-    public function store(Request $request)
+    public function store(StorePurchaseRequest $request)
     {
-        $validated = $request->validate([
-            'supplier_id'        => 'required|exists:suppliers,id',
-            'items'              => 'required|array',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity'   => 'required|numeric|min:0.001',
-            'items.*.is_package' => 'nullable|boolean',
-            'items.*.buy_price'  => 'required|numeric|min:0',
-            'items.*.sale_price' => 'nullable|numeric|min:0',
-            'paid_amount'        => 'required|numeric|min:0',
-            'notes'              => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         try {
             return DB::transaction(function () use ($validated) {
@@ -135,19 +127,9 @@ class PurchaseController extends Controller
         return $purchase->load('supplier', 'items.product');
     }
 
-    public function update(Request $request, Purchase $purchase)
+    public function update(UpdatePurchaseRequest $request, Purchase $purchase)
     {
-        $validated = $request->validate([
-            'supplier_id'        => 'sometimes|required|exists:suppliers,id',
-            'paid_amount'        => 'sometimes|numeric|min:0',
-            'notes'              => 'nullable|string',
-            'items'              => 'sometimes|array',
-            'items.*.product_id' => 'required_with:items|exists:products,id',
-            'items.*.quantity'   => 'required_with:items|numeric|min:0.001',
-            'items.*.is_package' => 'nullable|boolean',
-            'items.*.buy_price'  => 'required_with:items|numeric|min:0',
-            'items.*.sale_price' => 'nullable|numeric|min:0',
-        ]);
+        $validated = $request->validated();
 
         return DB::transaction(function () use ($validated, $purchase, $request) {
             $oldUnpaid   = $purchase->total_amount - $purchase->paid_amount;

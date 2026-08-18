@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreProductRequest;
+use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\AiService;
@@ -9,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Intervention\Image\Facades\Image;
 
 class ProductController extends Controller
@@ -185,39 +186,9 @@ class ProductController extends Controller
 
         return $products->toArray();
     }
-    public function store(Request $request)
+    public function store(StoreProductRequest $request)
     {
-        $validated = $request->validate([
-            'name'              => 'required|string|max:255',
-            'slug'              => ['nullable', 'string', 'max:255', Rule::unique('products', 'slug')->whereNull('deleted_at')],
-            'description'       => 'nullable|string',
-            'short_description' => 'nullable|string',
-            'sku'               => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')],
-            'purchase_price'    => 'nullable|numeric|min:0',
-            'price'             => 'required|numeric|min:0',
-            'sale_price'        => 'nullable|numeric|min:0',
-            'stock_quantity'    => 'nullable|numeric|min:0',
-            'in_stock'          => 'boolean',
-            'is_active'         => 'boolean',
-            'is_hot'            => 'boolean',
-
-            'image'             => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
-
-            'images'            => 'nullable|array',
-            'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:10240',
-
-            'category_id'       => 'required|exists:categories,id',
-            'weight'            => 'nullable|numeric|min:0',
-            'dimensions'        => 'nullable|string',
-            'unit'              => 'nullable|string|max:20',
-            'package_unit'      => 'nullable|string|max:20',
-            'package_size'      => 'nullable|required_with:package_unit|numeric|min:0.001',
-            'package_price'     => 'nullable|required_with:package_unit|numeric|min:0',
-            'package_purchase_price' => 'nullable|numeric|min:0',
-            'attributes'        => 'nullable|array',
-            'hot_order'         => 'nullable|integer',
-            'hot_group'         => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         if (empty($validated['slug'])) {
             $baseSlug = Str::slug($validated['name']);
@@ -285,37 +256,9 @@ class ProductController extends Controller
         return response()->json($product);
     }
 
-    public function update(Request $request, Product $product)
+    public function update(UpdateProductRequest $request, Product $product)
     {
-        $validated = $request->validate([
-            'name'              => 'sometimes|required|string|max:255',
-            'slug'              => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('products', 'slug')->whereNull('deleted_at')->ignore($product->id)],
-            'description'       => 'nullable|string',
-            'short_description' => 'nullable|string',
-            'sku'               => ['sometimes', 'required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')->ignore($product->id)],
-            'purchase_price'    => 'nullable|numeric|min:0',
-            'price'             => 'sometimes|required|numeric|min:0',
-            'sale_price'        => 'nullable|numeric|min:0',
-            'in_stock'          => 'boolean',
-            'is_active'         => 'boolean',
-            'is_hot'            => 'boolean',
-
-            'image'             => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
-            'images'            => 'nullable|array',
-            'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:10240',
-
-            'category_id'       => 'sometimes|required|exists:categories,id',
-            'weight'            => 'nullable|numeric|min:0',
-            'dimensions'        => 'nullable|string',
-            'unit'              => 'nullable|string|max:20',
-            'package_unit'      => 'nullable|string|max:20',
-            'package_size'      => 'nullable|required_with:package_unit|numeric|min:0.001',
-            'package_price'     => 'nullable|required_with:package_unit|numeric|min:0',
-            'package_purchase_price' => 'nullable|numeric|min:0',
-            'attributes'        => 'nullable|array',
-            'hot_order'         => 'nullable|integer',
-            'hot_group'         => 'nullable|string|max:50',
-        ]);
+        $validated = $request->validated();
 
         if (isset($validated['name']) && empty($validated['slug'])) {
             $baseSlug = Str::slug($validated['name']);

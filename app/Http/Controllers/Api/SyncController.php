@@ -317,8 +317,30 @@ class SyncController extends Controller
         switch ($type) {
             case 'PRODUCT_CREATE':
                 if (Product::where('uuid', $payload['uuid'] ?? '')->exists()) return;
+
+                // category_id — NOT NULL с FK на categories (см. миграцию
+                // create_products_table) — раньше сюда просал null и insert
+                // падал на constraint violation. Требование согласовано с
+                // ProductController@store, где category_id обязателен и на
+                // онлайн-создании товара.
+                if (empty($payload['category_id']) || ! Category::where('id', $payload['category_id'])->exists()) {
+                    throw new \Exception("Не удалось создать товар «{$payload['name']}»: не указана существующая категория.");
+                }
+
+                // slug — NOT NULL + unique среди активных (см. миграцию
+                // make_products_slug_sku_unique_among_active_only) и раньше не
+                // заполнялся вовсе — insert падал всегда. Та же логика генерации,
+                // что в ProductController@store.
+                $baseSlug = Str::slug($payload['name']);
+                $slug     = $baseSlug;
+                $counter  = 1;
+                while (Product::where('slug', $slug)->exists()) {
+                    $slug = $baseSlug . '-' . $counter++;
+                }
+
                 Product::create([
                     'uuid' => $payload['uuid'],
+                    'slug' => $slug,
                     'name' => $payload['name'],
                     'sku' => $payload['sku'] ?? null,
                     'barcode' => $payload['barcode'] ?? null,
@@ -328,7 +350,7 @@ class SyncController extends Controller
                     'stock_quantity' => $payload['stock_quantity'] ?? 0,
                     'in_stock' => ($payload['stock_quantity'] ?? 0) > 0,
                     'is_active' => $payload['is_active'] ?? true,
-                    'category_id' => $payload['category_id'] ?? null,
+                    'category_id' => $payload['category_id'],
                     'unit' => $payload['unit'] ?? 'шт',
                     'package_unit' => $payload['package_unit'] ?? null,
                     'package_size' => $payload['package_size'] ?? null,

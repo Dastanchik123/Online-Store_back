@@ -1,0 +1,1 @@
+import{a5 as u,X as c,a6 as l,N as r}from"./BDJnAtAX.js";const h=u(async o=>{let s,i;const e=c();e.isAuthenticated||([s,i]=l(()=>e.initAuth()),await s,i());{if(!e.isAuth)return r("/auth/login");const t=o.meta.permission,a=Array.isArray(t)?t:t?[t]:[];if(!(a.length===0||a.some(n=>e.hasPermission(n))))return r("/")}});export{h as default};

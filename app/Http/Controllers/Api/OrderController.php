@@ -2,6 +2,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreOrderRequest;
+use App\Http\Requests\UpdateOrderRequest;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CustomerDebt;
@@ -108,20 +110,9 @@ class OrderController extends Controller
     }
 
     
-    public function store(Request $request)
+    public function store(StoreOrderRequest $request)
     {
-        $validated = $request->validate([
-            'shipping_address_id' => 'nullable|exists:addresses,id',
-            'billing_address_id'  => 'nullable|exists:addresses,id',
-            'shipping_address'    => 'nullable|array',
-            'billing_address'     => 'nullable|array',
-            'notes'               => 'nullable|string',
-            'is_debt'             => 'boolean',
-            'due_date'            => 'nullable|date|after:today',
-            'initial_payment'     => 'nullable|numeric|min:0',
-            'payment_method'      => 'nullable|string',
-            'coupon_code'         => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         $user = Auth::user();
         $cart = Cart::where('user_id', $user->id ?? null)
@@ -281,18 +272,13 @@ class OrderController extends Controller
     }
 
     
-    public function update(Request $request, Order $order)
+    public function update(UpdateOrderRequest $request, Order $order)
     {
         if (!Auth::user()->hasPermission('orders.edit')) {
             return response()->json(['message' => 'Forbidden. Missing permission: orders.edit'], 403);
         }
 
-        $validated = $request->validate([
-            'status'         => 'sometimes|in:pending,processing,shipped,delivered,cancelled,refunded',
-            'payment_status' => 'sometimes|in:pending,paid,failed,refunded',
-            'payment_method' => 'nullable|string',
-            'notes'          => 'nullable|string',
-        ]);
+        $validated = $request->validated();
 
         $oldStatus        = $order->status;
         $oldPaymentStatus = $order->payment_status;

@@ -307,20 +307,43 @@ class PosController extends Controller
 
     public function searchProducts(Request $request)
     {
-        $search = $request->get('q');
+        $search = trim((string) $request->get('q'));
         if (! $search) {
             return response()->json([]);
         }
 
-        $products = Product::where('is_active', true)
-            ->where(function ($q) use ($search) {
+        $query = Product::where('is_active', true);
+
+        // На кассе критично не промахнуться по опечатке кассира — та же логика
+        // нечёткого поиска (триграммы + Левенштейн), что и в каталоге
+        // (ProductController::buildIndexPayload), доступна только на Postgres
+        // (pg_trgm/fuzzystrmatch). В тестах/sqlite падаем обратно на LIKE.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $hasDirectMatch = (clone $query)->where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('sku', 'ilike', "%{$search}%");
+            })->exists();
+
+            if ($hasDirectMatch) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'ilike', "%{$search}%")
+                        ->orWhere('sku', 'ilike', "%{$search}%");
+                })->orderByRaw('GREATEST(similarity(name, ?), word_similarity(?, name)) desc', [$search, $search]);
+            } else {
+                $query->whereRaw('GREATEST(similarity(name, ?), word_similarity(?, name)) >= 0.25', [$search, $search])
+                    ->orderByRaw(
+                        '(SELECT MIN(levenshtein(lower(w), lower(?))) FROM unnest(string_to_array(name, \' \')) AS w) asc',
+                        [$search]
+                    );
+            }
+        } else {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('sku', 'like', "%{$search}%");
-            })
-            ->limit(10)
-            ->get();
+            });
+        }
 
-        return response()->json($products);
+        return response()->json($query->limit(10)->get());
     }
 
     public function getAllProducts()

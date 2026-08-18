@@ -1,1 +1,0 @@
-import{a5 as i,X as o,a6 as s,N as u}from"./CUKOyim7.js";const h=i(async(n,r)=>{let e,a;const t=o();if(t.isAuthenticated||([e,a]=s(()=>t.initAuth()),await e,a()),!t.isAuthenticated)return u("/auth/login")});export{h as default};

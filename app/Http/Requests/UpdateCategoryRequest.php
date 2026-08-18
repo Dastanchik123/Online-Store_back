@@ -19,7 +19,7 @@ class UpdateCategoryRequest extends FormRequest
             'name' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|nullable|string|max:255|unique:categories,slug,' . $categoryId,
             'description' => 'nullable|string',
-            'image' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
             'parent_id' => 'nullable|exists:categories,id',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
