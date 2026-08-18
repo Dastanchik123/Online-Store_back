@@ -1,1 +1,0 @@
-import{a5 as s,X as n,a6 as o,N as i}from"./N-Y1CzNI.js";const f=s(async(r,u)=>{let e,a;const t=n();t.isAuthenticated||([e,a]=o(()=>t.initAuth()),await e,a());{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin)return i("/")}});export{f as default};
