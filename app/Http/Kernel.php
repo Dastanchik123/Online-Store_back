@@ -49,5 +49,6 @@ class Kernel extends HttpKernel
         'superadmin'       => \App\Http\Middleware\IsSuperAdmin::class,
         'staff'            => \App\Http\Middleware\IsStaff::class,
         'permission'       => \App\Http\Middleware\CheckPermission::class,
+        'self-service.device' => \App\Http\Middleware\EnsureSelfServiceDevice::class,
     ];
 }

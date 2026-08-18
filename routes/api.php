@@ -58,14 +58,24 @@ Route::get('/orders/track/{orderNumber}', [OrderController::class, 'trackByNumbe
 // /categories, /settings/public выше — здесь только то, что специфично
 // для self-service: создание заказа, оплата, статус.
 Route::prefix('self-service')->middleware('throttle:60,1')->group(function () {
-    Route::post('/orders', [\App\Http\Controllers\Api\SelfServiceController::class, 'store']);
-    Route::get('/orders/{orderUuid}', [\App\Http\Controllers\Api\SelfServiceController::class, 'show']);
-    Route::get('/orders/{orderUuid}/payment-status', [\App\Http\Controllers\Api\SelfServiceController::class, 'paymentStatus']);
-    Route::post('/orders/{orderUuid}/cancel', [\App\Http\Controllers\Api\SelfServiceController::class, 'cancel']);
-    Route::get('/orders/{orderUuid}/receipt', [\App\Http\Controllers\Api\SelfServiceController::class, 'receipt']);
+    // Обмен одноразового кода пейринга на постоянный device-токен киоска.
+    // Отдельный, более строгий rate-limit — код всего 6 цифр.
+    Route::post('/pair', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'pair'])
+        ->middleware('throttle:10,1');
+
+    // Эти роуты дёргает сама касса — требуют валидный device-токен,
+    // выданный через /pair (см. EnsureSelfServiceDevice).
+    Route::middleware('self-service.device')->group(function () {
+        Route::post('/orders', [\App\Http\Controllers\Api\SelfServiceController::class, 'store']);
+        Route::get('/orders/{orderUuid}', [\App\Http\Controllers\Api\SelfServiceController::class, 'show']);
+        Route::get('/orders/{orderUuid}/payment-status', [\App\Http\Controllers\Api\SelfServiceController::class, 'paymentStatus']);
+        Route::post('/orders/{orderUuid}/cancel', [\App\Http\Controllers\Api\SelfServiceController::class, 'cancel']);
+        Route::get('/orders/{orderUuid}/receipt', [\App\Http\Controllers\Api\SelfServiceController::class, 'receipt']);
+    });
 
     // Подтверждение QR-оплаты — открывается на телефоне покупателя по ссылке
     // из QR, доступ даёт только знание токена (шифрованный, с TTL), не логин.
+    // Телефон покупателя не имеет device-токена киоска, поэтому вне middleware выше.
     Route::get('/pay/{token}', [\App\Http\Controllers\Api\SelfServiceController::class, 'payInfo']);
     Route::post('/pay/{token}/confirm', [\App\Http\Controllers\Api\SelfServiceController::class, 'confirmPayment']);
 });
@@ -191,6 +201,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/settings', [SettingController::class, 'index']);
             Route::post('/settings', [SettingController::class, 'update']);
             Route::post('/settings/upload-file', [SettingController::class, 'uploadFile']);
+
+            Route::get('/self-service-devices', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'index']);
+            Route::post('/self-service-devices', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'store']);
+            Route::post('/self-service-devices/{device}/pairing-code', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'issuePairingCode']);
+            Route::post('/self-service-devices/{device}/revoke', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'revoke']);
         });
 
         Route::middleware('permission:marketing.manage')->group(function () {

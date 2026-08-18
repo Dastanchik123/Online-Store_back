@@ -25,10 +25,15 @@ class SelfServiceController extends Controller
             'client_uuid'         => 'nullable|uuid',
         ]);
 
+        // Терминал из проверенного device-токена (см. EnsureSelfServiceDevice)
+        // приоритетнее того, что прислал клиент в теле — иначе валидный токен
+        // терминала SS1 мог бы пробить заказ от имени SS2.
+        $terminalId = $request->attributes->get('self_service_terminal_id') ?? $validated['terminal_id'] ?? null;
+
         try {
             $order = $this->orders->createOrder(
                 $validated['items'],
-                $validated['terminal_id'] ?? null,
+                $terminalId,
                 $validated['client_uuid'] ?? null
             );
         } catch (SelfServiceException $e) {

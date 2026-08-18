@@ -1,1 +1,0 @@
-import{a5 as r,X as s,a6 as u,N as i}from"./CW5d--D4.js";const h=r(async(o,n)=>{let e,a;const t=s();t.isAuthenticated||([e,a]=u(()=>t.initAuth()),await e,a());{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin&&!t.isPurchaser)return i("/")}});export{h as default};
