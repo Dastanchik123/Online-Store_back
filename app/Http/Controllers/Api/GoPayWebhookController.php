@@ -25,7 +25,10 @@ class GoPayWebhookController extends Controller
         $nonce     = $request->header('GoPay-Nonce');
         $signature = $request->header('GoPay-Signature');
 
-        if (! GoPayClient::verifyWebhookSignature((string) config('services.gopay.secret_key'), $nonce, $rawBody, $signature)) {
+        // Внимание: подпись вебхука считается отдельным webhook_secret
+        // (Developer → Webhooks в кабинете GoPay), а НЕ secret_key от API —
+        // несмотря на формулировку доков про "тот же алгоритм".
+        if (! GoPayClient::verifyWebhookSignature((string) config('services.gopay.webhook_secret'), $nonce, $rawBody, $signature)) {
             Log::warning('GoPay webhook: подпись не совпала, запрос отклонён');
 
             return response()->json(['message' => 'invalid signature'], 400);

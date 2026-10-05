@@ -35,7 +35,6 @@ class GoPayClient
         $signature = self::sign($this->secretKey, $nonce, $dataStr);
 
         $response = Http::withHeaders([
-            'Content-Type'    => 'application/json',
             'GoPay-Api-Key'   => $this->apiKey,
             'GoPay-Nonce'     => $nonce,
             'GoPay-Signature' => $signature,

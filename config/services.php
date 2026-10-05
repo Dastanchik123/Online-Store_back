@@ -25,9 +25,13 @@ return [
     ],
 
     'gopay' => [
-        'base_url'   => env('GOPAY_BASE_URL', 'https://api.gopay.kg'),
-        'api_key'    => env('GOPAY_API_KEY'),
-        'secret_key' => env('GOPAY_SECRET_KEY'),
+        'base_url'       => env('GOPAY_BASE_URL', 'https://api.gopay.kg'),
+        'api_key'        => env('GOPAY_API_KEY'),
+        'secret_key'     => env('GOPAY_SECRET_KEY'),
+        // Отдельный секрет для проверки подписи вебхуков (Developer → Webhooks
+        // в кабинете GoPay) — НЕ совпадает с secret_key от API-запросов, хотя
+        // формула подписи (HMAC-SHA512) та же самая.
+        'webhook_secret' => env('GOPAY_WEBHOOK_SECRET'),
     ],
 
 ];
