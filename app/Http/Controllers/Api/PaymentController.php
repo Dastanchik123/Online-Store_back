@@ -73,14 +73,14 @@ class PaymentController extends Controller
                 'payment_details' => $validated['payment_details'] ?? null,
             ]);
 
-            
-            
+
+
             $payment->update([
                 'status' => 'completed',
                 'paid_at' => now(),
             ]);
 
-            $order->update(['payment_status' => 'paid']);
+            $this->syncOrderPaymentStatus($order);
 
             DB::commit();
 
@@ -125,26 +125,55 @@ class PaymentController extends Controller
             'payment_details' => 'nullable|string',
         ]);
 
-        $payment->update($validated);
-
-        if (isset($validated['status'])) {
-            if ($validated['status'] === 'completed' && !$payment->paid_at) {
-                $payment->update(['paid_at' => now()]);
-                $payment->order->update(['payment_status' => 'paid']);
-            } elseif ($validated['status'] === 'failed') {
-                $payment->order->update(['payment_status' => 'failed']);
-            } elseif ($validated['status'] === 'refunded') {
-                $payment->order->update(['payment_status' => 'refunded']);
+        DB::transaction(function () use ($validated, $payment) {
+            if (($validated['status'] ?? null) === 'completed' && !$payment->paid_at) {
+                $validated['paid_at'] = now();
             }
 
+            $payment->update($validated);
+
+            if (isset($validated['status'])) {
+                $this->syncOrderPaymentStatus($payment->order);
+            }
+        });
+
+        if (isset($validated['status'])) {
             try {
-                event(new \App\Events\OrderStatusUpdated($payment->order));
+                event(new \App\Events\OrderStatusUpdated($payment->order->fresh()));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('Broadcast failed (OrderStatusUpdated): ' . $e->getMessage());
             }
         }
 
-        return response()->json($payment->load('order'));
+        return response()->json($payment->fresh()->load('order'));
+    }
+
+    /**
+     * Пересчитывает order.payment_status по агрегату ВСЕХ платежей заказа
+     * (не по одному последнему изменённому) — иначе откат одного платежа на
+     * pending/failed мог оставить заказ формально "paid" (см. аудит удаления).
+     */
+    private function syncOrderPaymentStatus(Order $order): void
+    {
+        $order->refresh();
+
+        $completedTotal = (float) $order->payments()->where('status', 'completed')->sum('amount');
+        $hasRefunded     = $order->payments()->where('status', 'refunded')->exists();
+        $hasFailedOnly   = ! $hasRefunded && $completedTotal <= 0 && $order->payments()->where('status', 'failed')->exists();
+
+        if ($hasRefunded) {
+            $status = 'refunded';
+        } elseif ($completedTotal > 0 && $completedTotal >= (float) $order->total) {
+            $status = 'paid';
+        } elseif ($hasFailedOnly) {
+            $status = 'failed';
+        } else {
+            $status = 'pending';
+        }
+
+        if ($order->payment_status !== $status) {
+            $order->update(['payment_status' => $status]);
+        }
     }
 }
 

@@ -8,18 +8,13 @@ use App\Models\FinancialTransaction;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
+use App\Traits\ConvertsPackageQuantity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseController extends Controller
 {
-    private function baseQuantity(?Product $product, float $quantity, bool $isPackage): float
-    {
-        if ($isPackage && $product && $product->package_size) {
-            return $quantity * (float) $product->package_size;
-        }
-        return $quantity;
-    }
+    use ConvertsPackageQuantity;
 
     public function index(Request $request)
     {
@@ -125,6 +120,32 @@ class PurchaseController extends Controller
     public function show(Purchase $purchase)
     {
         return $purchase->load('supplier', 'items.product');
+    }
+
+    /**
+     * Позиции закупки с полем "доступно для возврата" (quantity - returned_quantity) —
+     * источник данных для формы "Новый возврат поставщику" на фронте.
+     */
+    public function returnableItems(Purchase $purchase)
+    {
+        $items = $purchase->items()
+            ->with('product:id,name,sku,unit,package_unit,package_size')
+            ->get()
+            ->map(function (PurchaseItem $item) {
+                return [
+                    'id'                => $item->id,
+                    'purchase_id'       => $item->purchase_id,
+                    'product_id'        => $item->product_id,
+                    'product'           => $item->product,
+                    'quantity'          => (float) $item->quantity,
+                    'returned_quantity' => (float) $item->returned_quantity,
+                    'available'         => max(0, (float) $item->quantity - (float) $item->returned_quantity),
+                    'is_package'        => (bool) $item->is_package,
+                    'buy_price'         => (float) $item->buy_price,
+                ];
+            });
+
+        return response()->json($items);
     }
 
     public function update(UpdatePurchaseRequest $request, Purchase $purchase)
@@ -261,14 +282,33 @@ class PurchaseController extends Controller
 
     public function destroy(Purchase $purchase)
     {
+        // Проверяем ДО каких-либо изменений: если товар из этой закупки уже
+        // перепродан, реверс остатка при удалении закупки увёл бы его в минус
+        // задним числом (без реального источника) — блокируем, а не молча портим склад.
+        foreach ($purchase->items as $item) {
+            $product = Product::find($item->product_id);
+            if (! $product) {
+                continue;
+            }
+
+            $reverseQty  = $this->baseQuantity($product, (float) $item->quantity, (bool) $item->is_package);
+            $resultStock = (float) $product->stock_quantity - $reverseQty;
+
+            if ($resultStock < 0) {
+                return response()->json([
+                    'message' => "Нельзя удалить закупку: товар «{$product->name}» уже частично или полностью продан, откат остатка увёл бы его в минус ({$resultStock}).",
+                ], 409);
+            }
+        }
+
         DB::transaction(function () use ($purchase) {
-            
+
             $unpaid = $purchase->total_amount - $purchase->paid_amount;
             if ($unpaid != 0) {
                 $purchase->supplier->decrement('debt_to_supplier', $unpaid);
             }
 
-            
+
             foreach ($purchase->items as $item) {
                 $product = Product::find($item->product_id);
                 if ($product) {
@@ -276,10 +316,14 @@ class PurchaseController extends Controller
                 }
             }
 
-            
+
             FinancialTransaction::where('trackable_type', Purchase::class)
                 ->where('trackable_id', $purchase->id)
                 ->delete();
+
+            // Позиции закупки — исторические строки; при soft-delete родителя
+            // DB-уровневый ON DELETE CASCADE не срабатывает, чистим явно (как в update()).
+            $purchase->items()->delete();
 
             $purchase->delete();
         });

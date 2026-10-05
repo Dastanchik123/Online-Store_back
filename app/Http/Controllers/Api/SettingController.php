@@ -47,6 +47,7 @@ class SettingController extends Controller
             'label_template_price_tag', 'label_template_barcode',
             'label_active_template_price_tag', 'label_active_template_barcode',
             'label_templates_all', 'print_label_queue',
+            'weighted_barcode_prefix', 'weighted_barcode_weight_digits',
         ];
 
         $settings = Setting::whereIn('key', $keys)->get()->mapWithKeys(function ($item) {
@@ -74,6 +75,7 @@ class SettingController extends Controller
         'label_template_price_tag', 'label_template_barcode',
         'label_active_template_price_tag', 'label_active_template_barcode',
         'label_templates_all', 'print_label_queue',
+        'weighted_barcode_prefix', 'weighted_barcode_weight_digits',
     ];
 
     public function update(Request $request)

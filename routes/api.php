@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\SupplierReturnController;
 use App\Http\Controllers\Api\WishlistController;
 use Illuminate\Support\Facades\Route;
 
@@ -78,6 +79,10 @@ Route::prefix('self-service')->middleware('throttle:60,1')->group(function () {
     // Телефон покупателя не имеет device-токена киоска, поэтому вне middleware выше.
     Route::get('/pay/{token}', [\App\Http\Controllers\Api\SelfServiceController::class, 'payInfo']);
     Route::post('/pay/{token}/confirm', [\App\Http\Controllers\Api\SelfServiceController::class, 'confirmPayment']);
+
+    // Вебхук GoPay (payment.committed) — подлинность проверяется HMAC-подписью
+    // внутри контроллера, не мидлваром, поэтому вне auth/device-групп выше.
+    Route::post('/gopay/webhook', [\App\Http\Controllers\Api\GoPayWebhookController::class, 'handle']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -107,6 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('/products/{product}', [ProductController::class, 'update']);
             Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
             Route::post('/products/ai-description', [ProductController::class, 'aiDescription']);
+            Route::post('/products/{product}/weighted-barcode', [ProductController::class, 'generateWeightedBarcode']);
         });
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:products.delete');
@@ -131,10 +137,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:purchases.manage')->group(function () {
             Route::apiResource('purchases', PurchaseController::class)->except(['destroy']);
             Route::post('purchases/{purchase}/pay', [PurchaseController::class, 'registerPayment']);
+            Route::get('purchases/{purchase}/returnable-items', [PurchaseController::class, 'returnableItems']);
         });
         Route::delete('/purchases/{purchase}', [PurchaseController::class, 'destroy'])
             ->middleware('permission:purchases.delete')
             ->name('purchases.destroy');
+
+        Route::middleware('permission:supplier_returns.manage')->group(function () {
+            Route::apiResource('supplier-returns', SupplierReturnController::class)->except(['destroy']);
+            Route::post('supplier-returns/{supplierReturn}/confirm', [SupplierReturnController::class, 'confirm']);
+            Route::post('supplier-returns/{supplierReturn}/cancel', [SupplierReturnController::class, 'cancel']);
+        });
+        Route::delete('/supplier-returns/{supplierReturn}', [SupplierReturnController::class, 'destroy'])
+            ->middleware('permission:supplier_returns.delete')
+            ->name('supplier-returns.destroy');
 
         Route::middleware('permission:inventory.manage')->group(function () {
             Route::apiResource('inventory/adjustments', InventoryController::class)->except(['destroy'])->names([
@@ -151,6 +167,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:debts.view')->group(function () {
             Route::get('accounting/debts', [AccountingController::class, 'debts']);
             Route::post('accounting/debts/{debt}/pay', [AccountingController::class, 'payDebt']);
+        });
+        // Удаление долга/платежа — деструктивная операция, требует отдельного
+        // права, а не просто "просмотр" (debts.view). См. аудит удаления.
+        Route::middleware('permission:debts.manage')->group(function () {
             Route::delete('accounting/debts/{debt}', [AccountingController::class, 'deleteDebt']);
             Route::delete('accounting/debts/payments/{payment}', [AccountingController::class, 'deleteDebtPayment']);
         });
@@ -185,6 +205,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::middleware('permission:products.view')->group(function () {
             Route::get('reports/products/{product}/barcode', [ReportController::class, 'barcode']);
+            Route::post('/barcodes/parse', [\App\Http\Controllers\Api\BarcodeController::class, 'parse']);
         });
 
         Route::middleware('permission:blog.manage')->group(function () {

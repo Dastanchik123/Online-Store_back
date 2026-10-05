@@ -69,8 +69,10 @@ class RoleController extends Controller
             return response()->json(['message' => 'Роль назначена пользователям — сначала переназначьте их роль.'], 409);
         }
 
-        RolePermission::where('role', $role->name)->delete();
-        $role->delete();
+        DB::transaction(function () use ($role) {
+            RolePermission::where('role', $role->name)->delete();
+            $role->delete();
+        });
 
         return response()->json(['message' => 'Роль удалена']);
     }

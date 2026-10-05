@@ -24,5 +24,11 @@ return [
         'key' => env('GEMINI_API_KEY'),
     ],
 
+    'gopay' => [
+        'base_url'   => env('GOPAY_BASE_URL', 'https://api.gopay.kg'),
+        'api_key'    => env('GOPAY_API_KEY'),
+        'secret_key' => env('GOPAY_SECRET_KEY'),
+    ],
+
 ];
 

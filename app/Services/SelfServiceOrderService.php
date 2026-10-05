@@ -266,6 +266,66 @@ class SelfServiceOrderService
         });
     }
 
+    /**
+     * Вызывается вебхуком GoPay при payment.committed (callback_url,
+     * подпись проверена в GoPayWebhookController). Идемпотентно — повторная
+     * доставка того же события не задвоит продажу/списание остатка.
+     */
+    public function confirmPaymentFromGopay(string $gopayPaymentId): void
+    {
+        DB::transaction(function () use ($gopayPaymentId) {
+            $payment = Payment::where('transaction_id', $gopayPaymentId)->lockForUpdate()->first();
+            if (! $payment || $payment->status === 'completed') {
+                return;
+            }
+
+            $order = Order::where('id', $payment->order_id)->lockForUpdate()->first();
+            if (! $order || $order->payment_status === 'paid') {
+                return;
+            }
+
+            if ($order->status === 'cancelled') {
+                // Банк подтвердил оплату после того, как заказ локально истёк
+                // или был отменён — остаток под ним уже не держится, повторно
+                // списывать его не трогаем. Деньги помечаем оплаченными для
+                // бухгалтерии, дальше нужна ручная проверка кассиром.
+                $payment->update(['status' => 'completed', 'paid_at' => now()]);
+                return;
+            }
+
+            $order->load('items');
+            foreach ($order->items as $item) {
+                $product = Product::find($item->product_id);
+                if (! $product || ! $product->is_active || $product->stock_quantity < $item->quantity) {
+                    $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+                    $payment->update(['status' => 'failed']);
+                    return;
+                }
+            }
+
+            foreach ($order->items as $item) {
+                $product = Product::find($item->product_id);
+                $product->decrement('stock_quantity', $item->quantity);
+                $product->increment('sales_count', $item->quantity);
+                $product->update(['in_stock' => $product->stock_quantity > 0]);
+            }
+
+            $order->update(['status' => 'delivered', 'payment_status' => 'paid']);
+            $payment->update(['status' => 'completed', 'paid_at' => now()]);
+
+            FinancialTransaction::create([
+                'user_id'        => null,
+                'type'           => 'income',
+                'amount'         => $order->total,
+                'category'       => 'Продажа товаров (Self-Service - QR)',
+                'description'    => "Оплата заказа Self-Service #{$order->order_number}",
+                'trackable_type' => Order::class,
+                'trackable_id'   => $order->id,
+                'payment_method' => 'qr',
+            ]);
+        });
+    }
+
     private function expireOrder(Order $order, Payment $payment): void
     {
         DB::transaction(function () use ($order, $payment) {

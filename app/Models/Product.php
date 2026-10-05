@@ -43,6 +43,9 @@ class Product extends Model
         'is_hot',
         'hot_order',
         'hot_group',
+        'is_weighted',
+        'min_weight',
+        'max_weight',
     ];
 
     protected $casts = [
@@ -53,6 +56,9 @@ class Product extends Model
         'package_size'         => 'decimal:3',
         'package_price'        => 'decimal:2',
         'package_purchase_price' => 'decimal:2',
+        'is_weighted'          => 'boolean',
+        'min_weight'           => 'decimal:3',
+        'max_weight'           => 'decimal:3',
         'in_stock'             => 'boolean',
         'is_active'            => 'boolean',
         'is_rentable'          => 'boolean',

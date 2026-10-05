@@ -56,6 +56,8 @@ class StoreSeeder extends Seeder
             ['role' => 'purchaser', 'permission' => 'suppliers.manage'],
             ['role' => 'purchaser', 'permission' => 'purchases.manage'],
             ['role' => 'purchaser', 'permission' => 'inventory.manage'],
+            ['role' => 'purchaser', 'permission' => 'supplier_returns.manage'],
+            ['role' => 'purchaser', 'permission' => 'supplier_returns.delete'],
 
             ['role' => 'cashier', 'permission' => 'cashier.access'],
             ['role' => 'cashier', 'permission' => 'pos.access'],

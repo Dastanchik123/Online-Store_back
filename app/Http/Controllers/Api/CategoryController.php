@@ -113,6 +113,22 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
+        // withTrashed: soft-deleted товар физически всё ещё в таблице products
+        // и всё ещё держит FK products.category_id — без withTrashed эта проверка
+        // пропустит такую категорию, а затем DELETE упадёт необработанным
+        // QueryException прямо на уровне БД (обнаружено живым тестированием).
+        if ($category->products()->withTrashed()->exists()) {
+            return response()->json([
+                'message' => 'Нельзя удалить категорию, в которой есть товары. Сначала перенесите или удалите товары этой категории.',
+            ], 409);
+        }
+
+        if ($category->children()->exists()) {
+            return response()->json([
+                'message' => 'Нельзя удалить категорию с подкатегориями. Сначала удалите или перенесите подкатегории.',
+            ], 409);
+        }
+
         if ($category->image) {
             Storage::disk('public')->delete($category->image);
         }

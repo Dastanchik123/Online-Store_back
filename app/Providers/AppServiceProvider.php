@@ -11,12 +11,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function register()
     {
-        // Временный QR-провайдер оплаты self-service (§35 ТЗ) — когда появится
-        // реальный банк/платёжный шлюз, меняется одной строкой здесь, без
-        // правок в SelfServiceOrderService/контроллере/фронте.
+        // Реальный платёжный шлюз (GoPay/ELQR) вместо временного QR — см.
+        // App\Services\Payments\GoPayPaymentProvider. SelfServiceOrderService
+        // /контроллер/фронт ничего не знают о смене провайдера.
         $this->app->bind(
             \App\Contracts\PaymentProviderInterface::class,
-            \App\Services\Payments\TemporaryQrPaymentProvider::class
+            \App\Services\Payments\GoPayPaymentProvider::class
         );
     }
 
@@ -91,40 +91,23 @@ class AppServiceProvider extends ServiceProvider
             foreach (array_keys($changes) as $field) {
                 $old[$field] = $product->getOriginal($field);
             }
-            $this->writeAuditLog('product.updated', $product, $old, $changes);
+            \App\Models\AuditLog::record('product.updated', $product, $old, $changes);
         });
 
         \App\Models\Setting::saved(function ($setting) {
             if ($setting->wasRecentlyCreated) {
-                $this->writeAuditLog('setting.created', $setting, null, ['key' => $setting->key, 'value' => $setting->value]);
+                \App\Models\AuditLog::record('setting.created', $setting, null, ['key' => $setting->key, 'value' => $setting->value]);
                 return;
             }
             if (! $setting->wasChanged('value')) {
                 return;
             }
-            $this->writeAuditLog(
+            \App\Models\AuditLog::record(
                 'setting.updated',
                 $setting,
                 ['key' => $setting->key, 'value' => $setting->getOriginal('value')],
                 ['key' => $setting->key, 'value' => $setting->value]
             );
         });
-    }
-
-    private function writeAuditLog(string $action, $model, $old, $new): void
-    {
-        try {
-            \App\Models\AuditLog::create([
-                'user_id'        => auth()->id(),
-                'action'         => $action,
-                'auditable_type' => get_class($model),
-                'auditable_id'   => $model->id,
-                'old_values'     => $old,
-                'new_values'     => $new,
-                'ip'             => request()->ip(),
-            ]);
-        } catch (\Throwable $e) {
-            // Таблица audit_logs могла ещё не смигрироваться (свежий install) — не роняем основную операцию
-        }
     }
 }

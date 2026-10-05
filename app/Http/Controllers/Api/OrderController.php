@@ -536,13 +536,52 @@ class OrderController extends Controller
 
         DB::beginTransaction();
         try {
-            
+
             foreach ($order->items as $item) {
                 $product = $item->product;
                 $product->increment('stock_quantity', $this->baseQuantity($product, (float) $item->quantity, (bool) $item->is_package));
             }
 
-            $order->update(['status' => 'cancelled']);
+            // Если заказ был оплачен — отмена не должна молча оставлять его
+            // "оплаченным" в отчётах. Переводим в refunded и фиксируем возврат
+            // тем же способом, что и OrderController::update() для перехода в refunded.
+            $wasPaid = $order->payment_status === 'paid';
+
+            $order->update([
+                'status'         => 'cancelled',
+                'payment_status' => $wasPaid ? 'refunded' : $order->payment_status,
+            ]);
+
+            if ($wasPaid) {
+                $totalIncome = FinancialTransaction::where('trackable_type', Order::class)
+                    ->where('trackable_id', $order->id)
+                    ->where('type', 'income')
+                    ->sum('amount');
+
+                $alreadyRefunded = FinancialTransaction::where('trackable_type', Order::class)
+                    ->where('trackable_id', $order->id)
+                    ->where('category', 'refund')
+                    ->sum('amount');
+
+                $amountToRefund = $totalIncome - $alreadyRefunded;
+
+                if ($amountToRefund > 0) {
+                    FinancialTransaction::create([
+                        'user_id'        => auth()->id(),
+                        'type'           => 'expense',
+                        'amount'         => $amountToRefund,
+                        'category'       => 'refund',
+                        'trackable_type' => Order::class,
+                        'trackable_id'   => $order->id,
+                        'description'    => "Возврат средств за отменённый заказ #{$order->id}",
+                    ]);
+                }
+            }
+
+            CustomerDebt::where('order_id', $order->id)
+                ->where('status', '!=', 'paid')
+                ->update(['status' => 'cancelled', 'remaining_amount' => 0]);
+
             DB::commit();
 
             try {

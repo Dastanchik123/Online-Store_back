@@ -16,6 +16,8 @@ class InventoryAdjustment extends Model
         'difference',
         'reason',
         'user_id',
+        'reference_type',
+        'reference_id',
     ];
 
     protected $casts = [
@@ -32,5 +34,10 @@ class InventoryAdjustment extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function reference()
+    {
+        return $this->morphTo();
     }
 }

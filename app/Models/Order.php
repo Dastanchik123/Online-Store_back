@@ -72,12 +72,14 @@ class Order extends Model
     
     public function user()
     {
-        return $this->belongsTo(User::class);
+        // withTrashed: исторический заказ не должен терять ссылку на клиента,
+        // если тот был впоследствии (soft-)удалён — как уже сделано для OrderItem::product().
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function staff()
     {
-        return $this->belongsTo(User::class, 'staff_id');
+        return $this->belongsTo(User::class, 'staff_id')->withTrashed();
     }
 
     public function shippingAddress()

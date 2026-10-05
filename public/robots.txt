@@ -1,14 +1,16 @@
-# https://www.robotstxt.org/robotstxt.html
+# START nuxt-robots (indexable)
 User-agent: *
-Allow: /
-Disallow: /admin/
-Disallow: /profile/
-Disallow: /checkout/
-Disallow: /cart/
-Disallow: /auth/
+Disallow: /admin
+Disallow: /cashier
+Disallow: /purchaser
+Disallow: /profile
+Disallow: /self-service
+Disallow: /tsd
+Disallow: /auth
+Disallow: /cart
+Disallow: /checkout
+Disallow: /wishlist
+Disallow: /order-tracking
 
-# Sitemap
-Sitemap: https://kurulus-store.vercel.app/sitemap.xml
-
-# Crawl-delay
-Crawl-delay: 1
+Sitemap: https://online-store-back.fly.dev/sitemap.xml
+# END nuxt-robots

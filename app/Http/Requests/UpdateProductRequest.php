@@ -44,6 +44,9 @@ class UpdateProductRequest extends FormRequest
             'attributes'        => 'nullable|array',
             'hot_order'         => 'nullable|integer',
             'hot_group'         => 'nullable|string|max:50',
+            'is_weighted'       => 'boolean',
+            'min_weight'        => 'nullable|numeric|min:0',
+            'max_weight'        => 'nullable|numeric|gte:min_weight',
         ];
     }
 }

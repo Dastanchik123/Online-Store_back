@@ -184,14 +184,38 @@ class SyncController extends Controller
                         ? $item['quantity'] * (float) $product->package_size
                         : $item['quantity'];
 
+                    $itemPrice = $item['price'];
+
+                    // Весовой товар: как и в PosController::store, цена с кассы не
+                    // доверяется — сервер сам декодирует штрихкод и подставляет
+                    // актуальную каталожную цену (офлайн-продажа могла быть
+                    // пробита с устаревшей ценой из локального кэша кассы).
+                    if ($product && $product->is_weighted && !empty($item['barcode'])) {
+                        $parsed = app(\App\Services\WeightedBarcodeService::class)->parse($item['barcode']);
+                        if ($parsed === null) {
+                            throw new \Exception("Некорректный весовой штрихкод для товара '{$product->name}'");
+                        }
+                        if ($parsed['product_id'] !== $product->id) {
+                            throw new \Exception("Штрихкод не соответствует товару '{$product->name}'");
+                        }
+                        if ($product->min_weight !== null && $parsed['weight_kg'] < (float) $product->min_weight) {
+                            throw new \Exception("Вес товара '{$product->name}' меньше допустимого минимума ({$product->min_weight} {$product->unit})");
+                        }
+                        if ($product->max_weight !== null && $parsed['weight_kg'] > (float) $product->max_weight) {
+                            throw new \Exception("Вес товара '{$product->name}' превышает допустимый максимум ({$product->max_weight} {$product->unit})");
+                        }
+                        $itemPrice = (float) ($product->sale_price ?? $product->price);
+                    }
+
                     OrderItem::create([
                         'uuid' => $item['uuid'] ?? (string) Str::uuid(),
                         'order_id' => $order->id,
                         'product_id' => $product ? $product->id : null,
                         'quantity' => $item['quantity'],
+                        'unit' => $item['unit'] ?? ($product ? ($product->unit ?: 'шт') : 'шт'),
                         'is_package' => $isPackage,
-                        'price' => $item['price'],
-                        'total' => $item['quantity'] * $item['price'],
+                        'price' => $itemPrice,
+                        'total' => $item['quantity'] * $itemPrice,
                         'product_name' => $item['name'] ?? ($product ? $product->name : 'Unknown'),
                         'product_sku' => $item['sku'] ?? ($product ? $product->sku : 'N/A'),
                         'purchase_price' => $product ? $product->purchase_price : 0,
@@ -356,13 +380,16 @@ class SyncController extends Controller
                     'package_size' => $payload['package_size'] ?? null,
                     'package_price' => $payload['package_price'] ?? null,
                     'package_purchase_price' => $payload['package_purchase_price'] ?? null,
+                    'is_weighted' => $payload['is_weighted'] ?? false,
+                    'min_weight' => $payload['min_weight'] ?? null,
+                    'max_weight' => $payload['max_weight'] ?? null,
                 ]);
                 break;
 
             case 'PRODUCT_UPDATE':
                 $product = $this->findProduct($payload);
                 if (!$product) throw new \Exception('Товар не найден: ' . ($payload['uuid'] ?? $payload['server_id'] ?? '?'));
-                $allowed = ['name', 'sku', 'barcode', 'price', 'sale_price', 'purchase_price', 'stock_quantity', 'is_active', 'is_hot', 'hot_order', 'hot_group', 'unit', 'package_unit', 'package_size', 'package_price', 'package_purchase_price'];
+                $allowed = ['name', 'sku', 'barcode', 'price', 'sale_price', 'purchase_price', 'stock_quantity', 'is_active', 'is_hot', 'hot_order', 'hot_group', 'unit', 'package_unit', 'package_size', 'package_price', 'package_purchase_price', 'is_weighted', 'min_weight', 'max_weight'];
                 $fields = array_intersect_key($payload['fields'] ?? [], array_flip($allowed));
                 if (!empty($payload['category_id'])) $fields['category_id'] = $payload['category_id'];
                 if (isset($fields['stock_quantity'])) $fields['in_stock'] = $fields['stock_quantity'] > 0;

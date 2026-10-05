@@ -13,16 +13,18 @@ class PurchaseItem extends Model
         'purchase_id',
         'product_id',
         'quantity',
+        'returned_quantity',
         'is_package',
         'buy_price',
         'total',
     ];
 
     protected $casts = [
-        'quantity'   => 'decimal:3',
-        'is_package' => 'boolean',
-        'buy_price'  => 'decimal:2',
-        'total'      => 'decimal:2',
+        'quantity'          => 'decimal:3',
+        'returned_quantity' => 'decimal:3',
+        'is_package'        => 'boolean',
+        'buy_price'         => 'decimal:2',
+        'total'             => 'decimal:2',
     ];
 
     public function purchase()
@@ -33,5 +35,10 @@ class PurchaseItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function supplierReturnItems()
+    {
+        return $this->hasMany(SupplierReturnItem::class);
     }
 }

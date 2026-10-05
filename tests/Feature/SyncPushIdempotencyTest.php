@@ -176,4 +176,97 @@ class SyncPushIdempotencyTest extends TestCase
         $response = $this->postJson('/api/sync/push', ['operations' => []]);
         $response->assertStatus(401);
     }
+
+    public function test_weighted_offline_sale_push_recomputes_price_from_catalog()
+    {
+        $user    = User::factory()->create(['role' => 'cashier']);
+        $product = Product::factory()->create([
+            'is_weighted'    => true,
+            'unit'           => 'кг',
+            'purchase_price' => 5,
+            'price'          => 12.90,
+            'sale_price'     => null,
+            'stock_quantity' => 100,
+        ]);
+        $barcode   = app(\App\Services\WeightedBarcodeService::class)->generate($product, 1.25);
+        $orderUuid = (string) Str::uuid();
+
+        $response = $this->actingAs($user)->postJson('/api/sync/push', [
+            'orders' => [
+                [
+                    'uuid'            => $orderUuid,
+                    'order_number'    => 'k1-998',
+                    // Кассы локальный кэш цены мог устареть — сервер игнорирует
+                    // это значение для весового товара со штрихкодом.
+                    'total_amount'    => 1.25,
+                    'payment_method'  => 'cash',
+                    'cash_amount'     => 16.13,
+                    'transfer_amount' => 0,
+                    'created_at'      => now()->toDateTimeString(),
+                    'items'           => [
+                        [
+                            'uuid'         => (string) Str::uuid(),
+                            'product_uuid' => $product->uuid,
+                            'quantity'     => 1.25,
+                            'price'        => 1,
+                            'unit'         => 'кг',
+                            'barcode'      => $barcode,
+                            'name'         => $product->name,
+                            'sku'          => $product->sku,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('results.0.status', 'success');
+
+        $order = \App\Models\Order::where('uuid', $orderUuid)->first();
+        $item  = $order->items()->first();
+        $this->assertEqualsWithDelta(16.125, (float) $item->total, 0.01);
+        $this->assertEqualsWithDelta(12.90, (float) $item->price, 0.01);
+        $this->assertSame('кг', $item->unit);
+
+        $product->refresh();
+        $this->assertEqualsWithDelta(98.75, (float) $product->stock_quantity, 0.001);
+    }
+
+    public function test_weighted_offline_sale_push_rejects_mismatched_barcode()
+    {
+        $user    = User::factory()->create(['role' => 'cashier']);
+        $product = Product::factory()->create(['is_weighted' => true, 'stock_quantity' => 10]);
+        $other   = Product::factory()->create(['is_weighted' => true, 'stock_quantity' => 10]);
+        $barcode = app(\App\Services\WeightedBarcodeService::class)->generate($other, 1.0);
+        $orderUuid = (string) Str::uuid();
+
+        $response = $this->actingAs($user)->postJson('/api/sync/push', [
+            'orders' => [
+                [
+                    'uuid'            => $orderUuid,
+                    'order_number'    => 'k1-997',
+                    'total_amount'    => 10,
+                    'payment_method'  => 'cash',
+                    'cash_amount'     => 10,
+                    'transfer_amount' => 0,
+                    'created_at'      => now()->toDateTimeString(),
+                    'items'           => [
+                        [
+                            'uuid'         => (string) Str::uuid(),
+                            'product_uuid' => $product->uuid,
+                            'quantity'     => 1.0,
+                            'price'        => 10,
+                            'barcode'      => $barcode,
+                            'name'         => $product->name,
+                            'sku'          => $product->sku,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('results.0.status', 'error');
+        $this->assertEquals(0, \App\Models\Order::where('uuid', $orderUuid)->count());
+    }
 }

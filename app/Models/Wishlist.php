@@ -20,6 +20,9 @@ class Wishlist extends Model
 
     public function product()
     {
-        return $this->belongsTo(Product::class);
+        // withTrashed: товар мог быть soft-deleted после добавления в избранное —
+        // без этого $wishlist->product молча становится null (фронт на это не
+        // рассчитан и падает, см. аудит удаления).
+        return $this->belongsTo(Product::class)->withTrashed();
     }
 }

@@ -165,20 +165,10 @@ class GenerateCatalog extends Command
         do {
             $this->skuCounter++;
             $body = str_pad($this->skuCounter, $bodyLength, '0', STR_PAD_LEFT);
-            $sku  = $prefix.$body.$this->eanCheckDigit($prefix.$body);
+            $sku  = $prefix.$body.\App\Support\Ean13::checkDigit($prefix.$body);
         } while (Product::where('sku', $sku)->exists());
 
         return $sku;
-    }
-
-    private function eanCheckDigit(string $digits12): int
-    {
-        $sum = 0;
-        foreach (str_split($digits12) as $i => $digit) {
-            $sum += ($i % 2 === 0) ? (int) $digit : (int) $digit * 3;
-        }
-
-        return (10 - ($sum % 10)) % 10;
     }
 
     private function uniqueProductSlug(string $name): string

@@ -24,6 +24,10 @@ class FinancialTransactionController extends Controller
             $query->where('category', $request->category);
         }
 
+        if ($request->filled('payment_method')) {
+            $query->where('payment_method', $request->payment_method);
+        }
+
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->date_from);
         }
@@ -89,6 +93,18 @@ class FinancialTransactionController extends Controller
     
     public function destroy(FinancialTransaction $finance)
     {
+        // Системные записи (созданные автоматически другим модулем — закупкой,
+        // оплатой долга, продажей и т.д.) нельзя стирать напрямую: это никак
+        // не сверяется с источником (paid_amount закупки, статус долга/заказа)
+        // и молча искажает финансовые отчёты. Удалять такие можно только через
+        // reversal-логику владельца (например DELETE /purchases/{id}).
+        // Вручную занесённые записи (trackable_id = null) удалять можно.
+        if ($finance->trackable_id !== null) {
+            return response()->json([
+                'message' => 'Нельзя удалить транзакцию, созданную автоматически (привязана к закупке/долгу/заказу). Отмените или удалите связанный документ вместо этого.',
+            ], 409);
+        }
+
         $finance->delete();
         return response()->noContent();
     }

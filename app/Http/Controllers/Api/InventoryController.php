@@ -96,9 +96,14 @@ class InventoryController extends Controller
     
     public function destroy(InventoryAdjustment $adjustment)
     {
-        
-        
+        // Это удаляет только запись из журнала корректировок — текущий
+        // stock_quantity товара НЕ откатывается к old_quantity (после этой
+        // корректировки могли пройти другие движения товара, слепой откат
+        // был бы небезопасен). См. аудит удаления.
         $adjustment->delete();
-        return response()->json(['message' => 'Adjustment record deleted']);
+
+        return response()->json([
+            'message' => 'Запись корректировки удалена из истории. Текущий остаток товара не изменился.',
+        ]);
     }
 }

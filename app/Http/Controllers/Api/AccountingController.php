@@ -97,8 +97,8 @@ class AccountingController extends Controller
 
     public function deleteDebtPayment(DebtPayment $payment)
     {
-        if (!auth()->user()->hasPermission('debts.view')) {
-            return response()->json(['message' => 'Forbidden. Missing permission: debts.view'], 403);
+        if (!auth()->user()->hasPermission('debts.manage')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: debts.manage'], 403);
         }
 
         return DB::transaction(function () use ($payment) {
@@ -137,8 +137,8 @@ class AccountingController extends Controller
 
     public function deleteDebt(CustomerDebt $debt)
     {
-        if (!auth()->user()->hasPermission('debts.view')) {
-            return response()->json(['message' => 'Forbidden. Missing permission: debts.view'], 403);
+        if (!auth()->user()->hasPermission('debts.manage')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: debts.manage'], 403);
         }
 
         if ($debt->status !== 'paid') {

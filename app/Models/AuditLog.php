@@ -20,4 +20,26 @@ class AuditLog extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Централизованная точка записи аудита — используется и хуками моделей
+     * (AppServiceProvider), и контроллерами, которым нужно зафиксировать
+     * действие, не выражающееся изменением полей самой модели (confirm/cancel).
+     */
+    public static function record(string $action, $model, $old, $new): void
+    {
+        try {
+            static::create([
+                'user_id'        => auth()->id(),
+                'action'         => $action,
+                'auditable_type' => get_class($model),
+                'auditable_id'   => $model->id,
+                'old_values'     => $old,
+                'new_values'     => $new,
+                'ip'             => request()->ip(),
+            ]);
+        } catch (\Throwable $e) {
+            // Таблица audit_logs могла ещё не смигрироваться (свежий install) — не роняем основную операцию
+        }
+    }
 }

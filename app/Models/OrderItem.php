@@ -16,6 +16,7 @@ class OrderItem extends Model
         'product_name',
         'product_sku',
         'quantity',
+        'unit',
         'is_package',
         'refunded_quantity',
         'purchase_price',

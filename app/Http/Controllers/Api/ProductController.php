@@ -376,7 +376,7 @@ class ProductController extends Controller
 
         do {
             $body = str_pad($next, $bodyLength, '0', STR_PAD_LEFT);
-            $sku  = $prefix.$body.$this->eanCheckDigit($prefix.$body);
+            $sku  = $prefix.$body.\App\Support\Ean13::checkDigit($prefix.$body);
             $exists = Product::where('sku', $sku)->exists();
             $next++;
         } while ($exists);
@@ -384,14 +384,32 @@ class ProductController extends Controller
         return response()->json(['sku' => $sku]);
     }
 
-    private function eanCheckDigit(string $digits12): int
+    public function generateWeightedBarcode(Request $request, Product $product, \App\Services\WeightedBarcodeService $weightedBarcodeService)
     {
-        $sum = 0;
-        foreach (str_split($digits12) as $i => $digit) {
-            $sum += ($i % 2 === 0) ? (int) $digit : (int) $digit * 3;
+        $request->validate([
+            'weight_kg' => 'required|numeric|min:0.001',
+        ]);
+
+        if (! $product->is_weighted) {
+            return response()->json(['message' => "Товар '{$product->name}' не отмечен как весовой"], 422);
         }
 
-        return (10 - ($sum % 10)) % 10;
+        $weightKg = (float) $request->weight_kg;
+
+        if ($product->min_weight !== null && $weightKg < (float) $product->min_weight) {
+            return response()->json(['message' => "Вес меньше допустимого минимума ({$product->min_weight} {$product->unit})"], 422);
+        }
+        if ($product->max_weight !== null && $weightKg > (float) $product->max_weight) {
+            return response()->json(['message' => "Вес превышает допустимый максимум ({$product->max_weight} {$product->unit})"], 422);
+        }
+
+        try {
+            $code = $weightedBarcodeService->generate($product, $weightKg);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['code' => $code, 'weight_kg' => $weightKg]);
     }
 
     public function aiDescription(Request $request, AiService $aiService)

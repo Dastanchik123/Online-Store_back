@@ -21,7 +21,10 @@ class CustomerDebt extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        // withTrashed: user_id обязателен (NOT NULL) — долг всегда привязан к
+        // реальному клиенту, "гостевых" долгов не бывает. Без withTrashed
+        // soft-deleted клиент выглядел бы неотличимо от гостя (см. аудит удаления).
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function order()

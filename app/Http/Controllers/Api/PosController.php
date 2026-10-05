@@ -8,6 +8,7 @@ use App\Models\FinancialTransaction;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\WeightedBarcodeService;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -77,7 +78,7 @@ class PosController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, WeightedBarcodeService $weightedBarcodeService)
     {
         $request->validate([
             'items'              => 'required|array|min:1',
@@ -85,6 +86,7 @@ class PosController extends Controller
             'items.*.quantity'   => 'required|numeric|min:0.001',
             'items.*.is_package' => 'nullable|boolean',
             'items.*.price'      => 'required|numeric|min:0',
+            'items.*.barcode'    => 'nullable|string|max:32',
             'user_id'            => 'nullable|exists:users,id',
             'cash_amount'        => 'required|numeric|min:0',
             'transfer_amount'    => 'required|numeric|min:0',
@@ -93,8 +95,37 @@ class PosController extends Controller
             'discount'           => 'nullable|numeric|min:0',
         ]);
 
-        return DB::transaction(function () use ($request) {
-            $items       = $request->items;
+        return DB::transaction(function () use ($request, $weightedBarcodeService) {
+            $items = $request->items;
+
+            // Весовой товар: цена и вес с фронта не доверяются — сервер сам
+            // декодирует штрихкод (product_id + вес) и подставляет актуальную
+            // каталожную цену, игнорируя $itemData['price'] с кассы.
+            foreach ($items as $key => $itemData) {
+                $product = Product::find($itemData['product_id']);
+                if (! $product || ! $product->is_weighted || empty($itemData['barcode'])) {
+                    continue;
+                }
+
+                $parsed = $weightedBarcodeService->parse($itemData['barcode']);
+                if ($parsed === null) {
+                    throw new \Exception("Некорректный весовой штрихкод для товара '{$product->name}'");
+                }
+                if ($parsed['product_id'] !== $product->id) {
+                    throw new \Exception("Штрихкод не соответствует товару '{$product->name}'");
+                }
+
+                $scannedWeight = $parsed['weight_kg'];
+                if ($product->min_weight !== null && $scannedWeight < (float) $product->min_weight) {
+                    throw new \Exception("Вес товара '{$product->name}' меньше допустимого минимума ({$product->min_weight} {$product->unit})");
+                }
+                if ($product->max_weight !== null && $scannedWeight > (float) $product->max_weight) {
+                    throw new \Exception("Вес товара '{$product->name}' превышает допустимый максимум ({$product->max_weight} {$product->unit})");
+                }
+
+                $items[$key]['price'] = (float) ($product->sale_price ?? $product->price);
+            }
+
             $totalPaid   = $request->cash_amount + $request->transfer_amount;
             $totalAmount = 0;
             foreach ($items as $item) {
@@ -184,6 +215,7 @@ class PosController extends Controller
                     'product_sku'    => $product->sku,
                     'purchase_price' => $product->purchase_price,
                     'quantity'       => $itemData['quantity'],
+                    'unit'           => $product->unit ?: 'шт',
                     'is_package'     => $isPackage,
                     'price'          => $itemData['price'],
                     'total'          => $itemData['price'] * $itemData['quantity'],
@@ -349,7 +381,7 @@ class PosController extends Controller
     public function getAllProducts()
     {
         $products = Product::where('is_active', true)
-            ->get(['id', 'name', 'sku', 'sale_price', 'price', 'stock_quantity', 'unit', 'package_unit', 'package_size', 'package_price']);
+            ->get(['id', 'name', 'sku', 'sale_price', 'price', 'stock_quantity', 'unit', 'package_unit', 'package_size', 'package_price', 'is_weighted', 'min_weight', 'max_weight']);
 
         return response()->json($products);
     }
