@@ -1,0 +1,60 @@
+name: DB Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC ежедневно
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client and gpg
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client gnupg
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::Секрет BACKUP_DATABASE_URL не задан — см. docs/BACKUP_RESTORE.md"
+            exit 1
+          fi
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > dump.sql.gz
+
+      - name: Encrypt dump
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PASSPHRASE:-}" ]; then
+            echo "::error::Секрет BACKUP_GPG_PASSPHRASE не задан — см. docs/BACKUP_RESTORE.md"
+            exit 1
+          fi
+          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "$PASSPHRASE" -o dump.sql.gz.gpg dump.sql.gz
+          rm -f dump.sql.gz
+
+      - name: Upload as GitHub Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="backup-$(date -u +%Y-%m-%d-%H%M)"
+          gh release create "$TAG" dump.sql.gz.gpg \
+            --repo "${{ github.repository }}" \
+            --title "DB backup $TAG" \
+            --notes "Автоматический бэкап БД. Расшифровка: gpg --batch --passphrase \"\$BACKUP_GPG_PASSPHRASE\" -d dump.sql.gz.gpg | gunzip > dump.sql"
+
+      - name: Prune old backups (retention 30 дней)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '30 days ago' +%s)
+          gh release list --repo "${{ github.repository }}" --limit 200 --json tagName,createdAt \
+            | jq -r --argjson cutoff "$cutoff" '.[] | select(.tagName | startswith("backup-")) | select((.createdAt | fromdateiso8601) < $cutoff) | .tagName' \
+            | while read -r tag; do
+                echo "Удаляю устаревший бэкап: $tag"
+                gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag || true
+              done

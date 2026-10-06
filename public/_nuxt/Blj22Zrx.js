@@ -1,0 +1,1 @@
+import{a0 as s,X as n,a1 as o,O as i}from"./CmzosWi6.js";const f=s(async(r,u)=>{let e,a;const t=n();t.isAuthenticated||([e,a]=o(()=>t.initAuth()),await e,a());{if(!t.isAuth)return i("/auth/login");if(!t.isAdmin)return i("/")}});export{f as default};

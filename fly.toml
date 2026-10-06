@@ -1,4 +1,4 @@
-app = "online-store-back"
+app = "kurulush-store-back"
 primary_region = "fra" # Франкфурт (или другой регион поближе к Neon)
 
 [build]

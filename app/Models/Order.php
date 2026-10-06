@@ -106,4 +106,32 @@ class Order extends Model
     {
         return $this->hasMany(Review::class);
     }
+
+    /**
+     * Пересчитывает payment_status по агрегату ВСЕХ платежей заказа (не по
+     * одному последнему изменённому) — иначе откат одного платежа на
+     * pending/failed мог оставить заказ формально "paid".
+     */
+    public function syncPaymentStatus(): void
+    {
+        $this->refresh();
+
+        $completedTotal = (float) $this->payments()->where('status', 'completed')->sum('amount');
+        $hasRefunded     = $this->payments()->where('status', 'refunded')->exists();
+        $hasFailedOnly   = ! $hasRefunded && $completedTotal <= 0 && $this->payments()->where('status', 'failed')->exists();
+
+        if ($hasRefunded) {
+            $status = 'refunded';
+        } elseif ($completedTotal > 0 && $completedTotal >= (float) $this->total) {
+            $status = 'paid';
+        } elseif ($hasFailedOnly) {
+            $status = 'failed';
+        } else {
+            $status = 'pending';
+        }
+
+        if ($this->payment_status !== $status) {
+            $this->update(['payment_status' => $status]);
+        }
+    }
 }

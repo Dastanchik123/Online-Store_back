@@ -12,5 +12,5 @@ Disallow: /checkout
 Disallow: /wishlist
 Disallow: /order-tracking
 
-Sitemap: https://online-store-back.fly.dev/sitemap.xml
+Sitemap: https://kurulush-store-back.fly.dev/sitemap.xml
 # END nuxt-robots

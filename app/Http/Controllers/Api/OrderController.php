@@ -11,12 +11,17 @@ use App\Models\DebtPayment;
 use App\Models\FinancialTransaction;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\Payments\OrderQrPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
+    public function __construct(private OrderQrPaymentService $qrPayments)
+    {
+    }
+
     // is_package: количество позиции хранится в упаковках (рулон/мешок), а
     // склад — всегда в базовой единице (метры/кг), поэтому возврат на склад
     // домножается на package_size товара.
@@ -200,10 +205,16 @@ class OrderController extends Controller
                 $product->increment('sales_count', $cartItem->quantity);
             }
 
-            
+
             $cart->items()->delete();
 
-            
+            // Динамический QR (GoPay) создаётся сразу, чтобы покупатель
+            // увидел его на странице заказа без дополнительного запроса.
+            if (($validated['payment_method'] ?? null) === 'mbank') {
+                $this->qrPayments->createQrPayment($order);
+            }
+
+
             if ($request->boolean('is_debt') && $user) {
                 $initialPayment = $validated['initial_payment'] ?? 0;
                 $debt           = CustomerDebt::create([
@@ -243,7 +254,7 @@ class OrderController extends Controller
 
             DB::commit();
 
-            $order->load('items.product', 'shippingAddress', 'billingAddress');
+            $order->load('items.product', 'shippingAddress', 'billingAddress', 'payments');
 
             try {
                 event(new \App\Events\NewOrderPlaced($order));
@@ -521,6 +532,35 @@ class OrderController extends Controller
         });
     }
 
+
+    // Новый QR для оплаты заказа — нужен, если предыдущий (живёт 5 минут)
+    // истёк, а покупатель так и не успел оплатить.
+    public function generatePaymentQr(Order $order)
+    {
+        $user = Auth::user();
+        if ($user && $order->user_id !== $user->id && ! $user->hasPermission('orders.view')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json(['message' => 'Order is already paid'], 400);
+        }
+
+        if (in_array($order->status, ['cancelled', 'refunded'])) {
+            return response()->json(['message' => 'Order is cancelled'], 400);
+        }
+
+        try {
+            $payment = $this->qrPayments->createQrPayment($order);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Не удалось создать QR для оплаты: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json([
+            'order'   => $order->fresh('payments'),
+            'payment' => $payment,
+        ]);
+    }
 
     public function cancel(Order $order)
     {

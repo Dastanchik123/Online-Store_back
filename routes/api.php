@@ -42,6 +42,10 @@ Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
 Route::get('/products/{product}', [ProductController::class, 'show']);
 
+// Поиск товара по фото (Gemini Vision) — отдельный строгий лимит, т.к. каждый
+// запрос дороже обычного каталожного и оплачивается через Gemini API.
+Route::middleware('throttle:10,1')->post('/products/recognize-photo', [ProductController::class, 'recognizeByPhoto']);
+
 Route::get('/reviews', [ReviewController::class, 'index']);
 Route::get('/reviews/{review}', [ReviewController::class, 'show']);
 
@@ -274,6 +278,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}', [OrderController::class, 'show']);
 
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel']);
+    Route::post('/orders/{order}/payment-qr', [OrderController::class, 'generatePaymentQr']);
 
     Route::get('/payments', [PaymentController::class, 'index']);
     Route::post('/payments', [PaymentController::class, 'store']);

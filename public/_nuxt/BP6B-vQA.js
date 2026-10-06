@@ -1,0 +1,1 @@
+import{a0 as i,X as o,a1 as r,O as a}from"./CmzosWi6.js";const h=i(async(n,u)=>{let t,s;const e=o();e.isAuthenticated||([t,s]=r(()=>e.initAuth()),await t,s());{if(!e.isAuth)return a("/auth/login");if(!e.hasPermission("pos.access")&&!e.hasPermission("cashier.access"))return a("/")}});export{h as default};

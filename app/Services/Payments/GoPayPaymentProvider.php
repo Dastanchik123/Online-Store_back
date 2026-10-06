@@ -32,9 +32,12 @@ class GoPayPaymentProvider implements PaymentProviderInterface
 
     public function createPayment(Order $order, Payment $payment): array
     {
-        // GoPay требует lifetime >= 300 секунд — локальная настройка тайм-аута
-        // кассы может быть короче, но на стороне GoPay QR должен жить дольше.
-        $timeoutSeconds = max(300, (int) (Setting::where('key', 'self_service_payment_timeout')->value('value') ?: 300));
+        // GoPay требует lifetime >= 300 секунд. Self-service кассу можно
+        // настраивать (но не короче 300с); обычный онлайн-заказ — всегда
+        // ровно 5 минут.
+        $timeoutSeconds = $order->channel === 'self_service'
+            ? max(300, (int) (Setting::where('key', 'self_service_payment_timeout')->value('value') ?: 300))
+            : 300;
 
         $requestData = [
             'order_id'    => 'pay-' . $payment->id,

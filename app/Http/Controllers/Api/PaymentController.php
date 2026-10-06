@@ -80,7 +80,7 @@ class PaymentController extends Controller
                 'paid_at' => now(),
             ]);
 
-            $this->syncOrderPaymentStatus($order);
+            $order->syncPaymentStatus();
 
             DB::commit();
 
@@ -133,7 +133,7 @@ class PaymentController extends Controller
             $payment->update($validated);
 
             if (isset($validated['status'])) {
-                $this->syncOrderPaymentStatus($payment->order);
+                $payment->order->syncPaymentStatus();
             }
         });
 
@@ -146,34 +146,6 @@ class PaymentController extends Controller
         }
 
         return response()->json($payment->fresh()->load('order'));
-    }
-
-    /**
-     * Пересчитывает order.payment_status по агрегату ВСЕХ платежей заказа
-     * (не по одному последнему изменённому) — иначе откат одного платежа на
-     * pending/failed мог оставить заказ формально "paid" (см. аудит удаления).
-     */
-    private function syncOrderPaymentStatus(Order $order): void
-    {
-        $order->refresh();
-
-        $completedTotal = (float) $order->payments()->where('status', 'completed')->sum('amount');
-        $hasRefunded     = $order->payments()->where('status', 'refunded')->exists();
-        $hasFailedOnly   = ! $hasRefunded && $completedTotal <= 0 && $order->payments()->where('status', 'failed')->exists();
-
-        if ($hasRefunded) {
-            $status = 'refunded';
-        } elseif ($completedTotal > 0 && $completedTotal >= (float) $order->total) {
-            $status = 'paid';
-        } elseif ($hasFailedOnly) {
-            $status = 'failed';
-        } else {
-            $status = 'pending';
-        }
-
-        if ($order->payment_status !== $status) {
-            $order->update(['payment_status' => $status]);
-        }
     }
 }
 

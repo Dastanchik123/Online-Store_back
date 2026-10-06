@@ -428,5 +428,80 @@ class ProductController extends Controller
 
         return response()->json(['description' => $description]);
     }
+
+    public function recognizeByPhoto(Request $request, AiService $aiService)
+    {
+        $request->validate([
+            'image' => 'required|image|max:8192',
+        ]);
+
+        $file = $request->file('image');
+        $imageBase64 = base64_encode(file_get_contents($file->getRealPath()));
+        $mimeType = $file->getMimeType();
+
+        $result = $aiService->recognizeProductPhoto($imageBase64, $mimeType);
+
+        $items = array_map(function ($item) {
+            $item['matched_products'] = $this->matchProductsForRecognizedItem($item);
+            return $item;
+        }, $result['items'] ?? []);
+
+        return response()->json([
+            'items' => $items,
+            'error' => $result['error'] ?? null,
+        ]);
+    }
+
+    // Три уровня точности сверху вниз: штрихкод/sku — точное совпадение,
+    // распознанный с упаковки текст — подстрочное, иначе сгенерированные ИИ
+    // поисковые фразы прогоняются через триграммное сходство (та же логика,
+    // что в buildIndexPayload для обычного текстового поиска).
+    private function matchProductsForRecognizedItem(array $item, int $limit = 8)
+    {
+        $base = Product::query()->where('is_active', true);
+
+        if (!empty($item['barcode'])) {
+            $bySku = (clone $base)->where('sku', $item['barcode'])
+                ->with('category:id,name')->limit($limit)->get();
+            if ($bySku->isNotEmpty()) {
+                return $bySku->values();
+            }
+        }
+
+        if (!empty($item['extracted_text'])) {
+            $text = trim($item['extracted_text']);
+            $byText = (clone $base)->where(function ($q) use ($text) {
+                $q->where('name', 'ilike', "%{$text}%")->orWhere('sku', 'ilike', "%{$text}%");
+            })->with('category:id,name')->limit($limit)->get();
+            if ($byText->isNotEmpty()) {
+                return $byText->values();
+            }
+        }
+
+        $queries = array_filter((array) ($item['search_queries'] ?? []));
+        if (empty($queries)) {
+            return collect();
+        }
+
+        $relevance = 'GREATEST(similarity(name, ?), word_similarity(?, name))';
+        $ids = collect();
+        foreach ($queries as $search) {
+            $ids = $ids->merge(
+                (clone $base)
+                    ->whereRaw("{$relevance} >= 0.2", [$search, $search])
+                    ->orderByRaw("{$relevance} desc", [$search, $search])
+                    ->limit($limit)
+                    ->pluck('id')
+            );
+        }
+
+        $uniqueIds = $ids->unique()->take($limit)->values();
+        if ($uniqueIds->isEmpty()) {
+            return collect();
+        }
+
+        $products = Product::whereIn('id', $uniqueIds)->with('category:id,name')->get();
+        return $uniqueIds->map(fn ($id) => $products->firstWhere('id', $id))->filter()->values();
+    }
 }
 
