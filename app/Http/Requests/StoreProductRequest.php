@@ -28,10 +28,10 @@ class StoreProductRequest extends FormRequest
             'is_active'         => 'boolean',
             'is_hot'            => 'boolean',
 
-            'image'             => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
+            'image'             => 'nullable|image|mimes:jpeg,png,jpg,webp|max:20480',
 
             'images'            => 'nullable|array',
-            'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:10240',
+            'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:20480',
 
             'category_id'       => 'required|exists:categories,id',
             'weight'            => 'nullable|numeric|min:0',

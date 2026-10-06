@@ -7,6 +7,15 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd zip
 
+# PHP по умолчанию режет загрузку на 2M (upload_max_filesize) — ниже, чем
+# лимит в Laravel-валидации на фото (20M), так что без этого файл обрывается
+# ещё до того, как запрос дойдёт до валидации. post_max_size — выше, чтобы
+# влезла галерея из нескольких фото в одном запросе
+RUN { \
+    echo 'upload_max_filesize=20M'; \
+    echo 'post_max_size=100M'; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
+
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html

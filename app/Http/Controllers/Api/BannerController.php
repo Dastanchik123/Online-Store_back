@@ -22,7 +22,7 @@ class BannerController extends Controller
         $validated = $request->validate([
             'title'       => 'nullable|string|max:255',
             'subtitle'    => 'nullable|string|max:255',
-            'image'       => 'required|image|max:2048',
+            'image'       => 'required|image|max:20480',
             'link_url'    => 'nullable|string',
             'button_text' => 'nullable|string',
             'section'     => 'nullable|string',
@@ -43,7 +43,7 @@ class BannerController extends Controller
         $validated = $request->validate([
             'title'       => 'nullable|string|max:255',
             'subtitle'    => 'nullable|string|max:255',
-            'image'       => 'nullable|image|max:2048',
+            'image'       => 'nullable|image|max:20480',
             'link_url'    => 'nullable|string',
             'button_text' => 'nullable|string',
             'section'     => 'nullable|string',

@@ -23,7 +23,7 @@ class UpdateUserRequest extends FormRequest
             'phone'       => 'nullable|string',
             'terminal_id' => 'nullable|string',
             'password'    => 'nullable|string|min:8',
-            'avatar'      => 'nullable|image|max:10240',
+            'avatar'      => 'nullable|image|max:20480',
         ];
     }
 }

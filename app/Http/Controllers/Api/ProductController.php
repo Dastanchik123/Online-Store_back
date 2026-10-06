@@ -432,7 +432,7 @@ class ProductController extends Controller
     public function recognizeByPhoto(Request $request, AiService $aiService)
     {
         $request->validate([
-            'image' => 'required|image|max:8192',
+            'image' => 'required|image|max:20480',
         ]);
 
         $file = $request->file('image');

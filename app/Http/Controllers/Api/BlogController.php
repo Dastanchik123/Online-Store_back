@@ -38,7 +38,7 @@ class BlogController extends Controller
             'title'        => 'required|string|max:255',
             'content'      => 'required|string',
             'is_published' => 'boolean',
-            'image'        => 'nullable|image|max:2048',
+            'image'        => 'nullable|image|max:20480',
         ]);
 
         $validated['slug']      = Str::slug($validated['title']) . '-' . rand(1000, 9999);
@@ -58,7 +58,7 @@ class BlogController extends Controller
             'title'        => 'sometimes|required|string|max:255',
             'content'      => 'sometimes|required|string',
             'is_published' => 'boolean',
-            'image'        => 'nullable|image|max:2048',
+            'image'        => 'nullable|image|max:20480',
         ]);
 
         if (isset($validated['title']) && $validated['title'] !== $post->title) {
