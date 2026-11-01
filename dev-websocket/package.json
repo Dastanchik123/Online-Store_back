@@ -1,0 +1,11 @@
+{
+  "name": "dev-websocket",
+  "private": true,
+  "description": "Локальная замена Soketi (Pusher-протокол) для разработки на Windows / Node 22",
+  "scripts": {
+    "start": "node server.cjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -16,10 +16,12 @@ class UserController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+            // ilike — регистронезависимый поиск на Postgres («иван» находит «Иван»)
+            $like = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where(function ($q) use ($search, $like) {
+                $q->where('name', $like, "%{$search}%")
+                    ->orWhere('email', $like, "%{$search}%")
+                    ->orWhere('phone', $like, "%{$search}%");
             });
         }
 
@@ -27,7 +29,7 @@ class UserController extends Controller
             $query->where('role', $request->role);
         }
 
-        return response()->json($query->latest()->paginate($request->get('per_page', 15)));
+        return response()->json($query->latest()->paginate(min(max((int) $request->get('per_page', 15), 1), 200)));
     }
 
     
@@ -35,7 +37,8 @@ class UserController extends Controller
     {
         $validated = $request->validated();
 
-        $validated['password'] = \Illuminate\Support\Facades\Hash::make($validated['password']);
+        // Покупатель без пароля входит по SMS — пароль случайный, его никто не знает
+        $validated['password'] = \Illuminate\Support\Facades\Hash::make($validated['password'] ?? \Illuminate\Support\Str::random(40));
 
         $user = User::create($validated);
 
@@ -110,10 +113,35 @@ class UserController extends Controller
             }
         }
 
+        $passwordChanged = false;
         if (isset($validated['password']) && $validated['password']) {
             $validated['password'] = \Illuminate\Support\Facades\Hash::make($validated['password']);
+            $passwordChanged       = true;
         } else {
             unset($validated['password']);
+        }
+
+        foreach (['staff_pin' => 'staff_pin_hash', 'badge_code' => 'badge_code_hash'] as $field => $column) {
+            if (! $request->exists($field)) {
+                continue;
+            }
+            unset($validated[$field]);
+
+            $value = trim((string) $request->input($field));
+            if ($value === '') {
+                $validated[$column] = null;
+                continue;
+            }
+
+            $hash  = User::staffCredentialHash($value);
+            $taken = User::where($column, $hash)->where('id', '!=', $user->id)->exists();
+            if ($taken) {
+                $message = $field === 'staff_pin'
+                    ? 'Этот PIN уже занят другим сотрудником — выберите другой.'
+                    : 'Этот бейдж уже привязан к другому сотруднику.';
+                return response()->json(['message' => $message, 'errors' => [$field => [$message]]], 422);
+            }
+            $validated[$column] = $hash;
         }
 
         if ($request->hasFile('avatar')) {
@@ -127,6 +155,16 @@ class UserController extends Controller
         }
 
         $user->update($validated);
+
+        // Новый пароль (например, старый узнали посторонние) — закрываем все
+        // сессии этого пользователя: токены живут 30 дней и иначе продолжали
+        // бы работать. Админу, меняющему пароль себе, оставляем текущую
+        if ($passwordChanged) {
+            $currentTokenId = $request->user()->currentAccessToken()->id ?? null;
+            $user->tokens()
+                ->when($request->user()->id === $user->id && $currentTokenId, fn ($q) => $q->where('id', '!=', $currentTokenId))
+                ->delete();
+        }
 
         return response()->json($user);
     }

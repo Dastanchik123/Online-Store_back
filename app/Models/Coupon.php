@@ -13,6 +13,7 @@ class Coupon extends Model
         'type',
         'value',
         'min_order_amount',
+        'usage_limit',
         'is_active',
         'expires_at',
     ];
@@ -22,6 +23,8 @@ class Coupon extends Model
         'expires_at'       => 'datetime',
         'value'            => 'decimal:2',
         'min_order_amount' => 'decimal:2',
+        'usage_limit'      => 'integer',
+        'used_count'       => 'integer',
     ];
 
     public function isValid()
@@ -34,6 +37,23 @@ class Coupon extends Model
             return false;
         }
 
+        if ($this->usage_limit !== null && $this->used_count >= $this->usage_limit) {
+            return false;
+        }
+
         return true;
+    }
+
+    // Один купон — один раз на покупателя (отменённые заказы не считаются)
+    public function wasUsedBy(?int $userId): bool
+    {
+        if (! $userId) {
+            return false;
+        }
+
+        return Order::where('coupon_id', $this->id)
+            ->where('user_id', $userId)
+            ->whereNotIn('status', ['cancelled', 'refunded'])
+            ->exists();
     }
 }

@@ -78,7 +78,7 @@ class WeightedBarcodePosSaleTest extends TestCase
             'transfer_amount' => 0,
         ]);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $this->assertEquals(0, Order::count());
     }
 
@@ -101,7 +101,7 @@ class WeightedBarcodePosSaleTest extends TestCase
             'transfer_amount' => 0,
         ]);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $this->assertEquals(0, Order::count());
     }
 

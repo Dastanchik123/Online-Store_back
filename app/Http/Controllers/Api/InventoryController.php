@@ -41,7 +41,7 @@ class InventoryController extends Controller
             });
         }
 
-        return $query->latest()->paginate($request->get('per_page', 15));
+        return $query->latest()->paginate(min(max((int) $request->get('per_page', 15), 1), 200));
     }
 
     public function store(Request $request)

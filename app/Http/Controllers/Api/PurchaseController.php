@@ -11,6 +11,7 @@ use App\Models\PurchaseItem;
 use App\Traits\ConvertsPackageQuantity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseController extends Controller
 {
@@ -41,12 +42,21 @@ class PurchaseController extends Controller
             $query->where('notes', 'like', "%{$search}%");
         }
 
-        return $query->latest()->paginate($request->get('per_page', 15));
+        return $query->latest()->paginate(min(max((int) $request->get('per_page', 15), 1), 200));
     }
 
     public function store(StorePurchaseRequest $request)
     {
         $validated = $request->validated();
+
+        // Оплата сверх суммы закупки уводила долг поставщику в минус и
+        // раздувала расходы в отчётах (заплачено 1000 за закупку на 50)
+        $total = array_sum(array_map(fn ($i) => $i['quantity'] * $i['buy_price'], $validated['items']));
+        if (round((float) $validated['paid_amount'] * 100) > round($total * 100)) {
+            throw ValidationException::withMessages([
+                'paid_amount' => ['Оплачено больше суммы закупки (' . round($total, 2) . ' сом).'],
+            ]);
+        }
 
         try {
             return DB::transaction(function () use ($validated) {
@@ -86,6 +96,7 @@ class PurchaseController extends Controller
                         $product->increment('stock_quantity', $this->baseQuantity($product, $itemData['quantity'], $isPackage));
                         $product->update([
                             'in_stock' => true,
+                            ...$this->latestCost($product, (float) $itemData['buy_price'], $isPackage),
                             ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
                         ]);
                     }
@@ -152,6 +163,42 @@ class PurchaseController extends Controller
     {
         $validated = $request->validated();
 
+        // Позиции пересоздаются заново — ссылки возврата поставщику на старые
+        // purchase_items оборвались бы, а остаток пересчитался бы без учёта возврата
+        if (isset($validated['items']) && $this->hasActiveSupplierReturns($purchase)) {
+            return response()->json([
+                'message' => 'Нельзя менять позиции закупки: по ней есть возврат поставщику. Сначала отмените возврат.',
+            ], 409);
+        }
+
+        // Как в destroy(): старые позиции списываются со склада целиком — если
+        // товар уже продан, остаток молча уходил в минус. Считаем итоговое
+        // изменение по каждому товару (новое количество минус старое)
+        if (isset($validated['items'])) {
+            $net = [];
+            foreach ($purchase->items as $oldItem) {
+                $product = Product::find($oldItem->product_id);
+                if ($product) {
+                    $net[$product->id] = ($net[$product->id] ?? 0) - $this->baseQuantity($product, (float) $oldItem->quantity, (bool) $oldItem->is_package);
+                }
+            }
+            foreach ($validated['items'] as $itemData) {
+                $product = Product::find($itemData['product_id']);
+                if ($product) {
+                    $net[$product->id] = ($net[$product->id] ?? 0) + $this->baseQuantity($product, (float) $itemData['quantity'], (bool) ($itemData['is_package'] ?? false));
+                }
+            }
+            foreach ($net as $productId => $delta) {
+                $product = Product::find($productId);
+                $result  = (float) $product->stock_quantity + $delta;
+                if ($delta < 0 && $result < -0.0005) {
+                    return response()->json([
+                        'message' => "Нельзя уменьшить закупку: товар «{$product->name}» уже продан, остаток ушёл бы в минус ({$result}).",
+                    ], 409);
+                }
+            }
+        }
+
         return DB::transaction(function () use ($validated, $purchase, $request) {
             $oldUnpaid   = $purchase->total_amount - $purchase->paid_amount;
             $oldSupplier = $purchase->supplier;
@@ -190,6 +237,7 @@ class PurchaseController extends Controller
                         $product->increment('stock_quantity', $this->baseQuantity($product, $itemData['quantity'], $isPackage));
                         $product->update([
                             'in_stock' => true,
+                            ...$this->latestCost($product, (float) $itemData['buy_price'], $isPackage),
                             ...(isset($itemData['sale_price']) ? ['price' => $itemData['sale_price']] : []),
                         ]);
                     }
@@ -199,6 +247,12 @@ class PurchaseController extends Controller
 
             
             $purchase->fill($request->only(['supplier_id', 'paid_amount', 'notes']));
+            if (round((float) $purchase->paid_amount * 100) > round((float) $purchase->total_amount * 100)) {
+                // исключение откатывает транзакцию вместе с изменением позиций
+                throw ValidationException::withMessages([
+                    'paid_amount' => ['Оплачено больше суммы закупки (' . round((float) $purchase->total_amount, 2) . ' сом).'],
+                ]);
+            }
             $purchase->save();
 
             
@@ -285,6 +339,16 @@ class PurchaseController extends Controller
         // Проверяем ДО каких-либо изменений: если товар из этой закупки уже
         // перепродан, реверс остатка при удалении закупки увёл бы его в минус
         // задним числом (без реального источника) — блокируем, а не молча портим склад.
+
+        // Возврат поставщику уже списал часть этой закупки со склада: полный
+        // откат количества увёл бы остаток ниже реального, а возврат остался
+        // бы без закупки
+        if ($this->hasActiveSupplierReturns($purchase)) {
+            return response()->json([
+                'message' => 'Нельзя удалить закупку: по ней есть возврат поставщику. Сначала отмените возврат.',
+            ], 409);
+        }
+
         foreach ($purchase->items as $item) {
             $product = Product::find($item->product_id);
             if (! $product) {
@@ -331,6 +395,34 @@ class PurchaseController extends Controller
         return response()->json(['message' => 'Purchase deleted successfully']);
     }
 
+    // Себестоимость товара — по последней закупке. Раньше закупка её не
+    // меняла: касса проверяла «ниже себестоимости» по старой цене, а прибыль
+    // в отчётах считалась от неё же. Упаковка (рулон/мешок) пересчитывается
+    // в цену базовой единицы (метр/кг).
+    private function latestCost(Product $product, float $buyPrice, bool $isPackage): array
+    {
+        if ($buyPrice <= 0) {
+            return [];
+        }
+
+        if ($isPackage && (float) $product->package_size > 0) {
+            return [
+                'purchase_price'         => round($buyPrice / (float) $product->package_size, 2),
+                'package_purchase_price' => round($buyPrice, 2),
+            ];
+        }
+
+        return ['purchase_price' => round($buyPrice, 2)];
+    }
+
+    // Возврат поставщику ссылается на позиции закупки (supplier_return_items.purchase_item_id)
+    private function hasActiveSupplierReturns(Purchase $purchase): bool
+    {
+        return \App\Models\SupplierReturnItem::whereIn('purchase_item_id', $purchase->items()->pluck('id'))
+            ->whereHas('supplierReturn', fn ($q) => $q->where('status', '!=', 'cancelled'))
+            ->exists();
+    }
+
     public function registerPayment(Request $request, Purchase $purchase)
     {
         $data = $request->validate([
@@ -338,6 +430,16 @@ class PurchaseController extends Controller
         ]);
 
         return DB::transaction(function () use ($data, $purchase) {
+            // Проверка под блокировкой: двойное нажатие «Оплатить» иначе
+            // проходило проверку остатка дважды и переплачивало поставщику
+            $purchase  = Purchase::whereKey($purchase->id)->lockForUpdate()->firstOrFail();
+            $remaining = (float) $purchase->total_amount - (float) $purchase->paid_amount;
+            if (round($data['amount'] * 100) > round($remaining * 100)) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Сумма больше остатка долга по закупке (' . round(max(0, $remaining), 2) . ' сом).'],
+                ]);
+            }
+
             $purchase->increment('paid_amount', $data['amount']);
 
             

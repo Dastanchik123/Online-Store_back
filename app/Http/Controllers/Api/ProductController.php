@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\AiService;
+use App\Services\ImageSearch\ImageSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -25,9 +26,38 @@ class ProductController extends Controller
         return $user && ($user->role === 'admin' || $user->hasPermission('products.view') || $user->hasPermission('products.edit'));
     }
 
+    // Фото с телефона (12+ Мп) в GD занимает 100–150 МБ — на маленькой машине
+    // Fly php-fpm падал по OOM и запрос отдавал 502. Уменьшаем до 1600px по
+    // длинной стороне (фронт уже ужимает в браузере, это подстраховка) и
+    // сразу освобождаем память, чтобы галерея из нескольких фото не копилась.
+    private function storeImage($file, string $dir, string $suffix = ''): string
+    {
+        $path = $dir . '/image_' . time() . '_' . Str::random(6) . $suffix . '.webp';
+
+        $image = Image::make($file);
+        if (function_exists('exif_read_data')) {
+            $image->orientate();
+        }
+        $image->resize(1600, 1600, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        });
+
+        Storage::disk('public')->put($path, (string) $image->encode('webp', 90));
+        $image->destroy();
+
+        return $path;
+    }
+
     public function index(Request $request)
     {
         $canSeeCost = $this->canSeeCostPrice($request);
+
+        // ids=1,2,3 — точечный запрос актуальных данных (печать этикеток
+        // перед отправкой на принтер): всегда из БД, мимо кэша ниже
+        if ($request->filled('ids')) {
+            return response()->json($this->buildIndexPayload($request, $canSeeCost));
+        }
 
         // Кэш ответа: повторные запросы с теми же параметрами отдаются из кэша мгновенно;
         // любое изменение каталога сбрасывает кэш через ApiCache::bump() (см. AppServiceProvider).
@@ -49,6 +79,14 @@ class ProductController extends Controller
         $hiddenCostFields = ['purchase_price', 'package_purchase_price'];
         $query = Product::query()->with('category');
 
+        if ($request->filled('ids')) {
+            $ids = array_values(array_filter(
+                explode(',', (string) $request->ids),
+                fn ($id) => ctype_digit(trim($id))
+            ));
+            $query->whereIn('id', array_map('intval', $ids));
+        }
+
         if ($request->has('category_id')) {
             $query->where('category_id', $request->category_id);
         }
@@ -63,6 +101,20 @@ class ProductController extends Controller
 
         if ($request->has('is_hot')) {
             $query->where('is_hot', $request->boolean('is_hot'));
+        }
+
+        // Мониторинг остатков: фильтр по уровню остатка на сервере — раньше
+        // фронт фильтровал только загруженную страницу из 100 товаров
+        switch ($request->get('stock_status')) {
+            case 'out':
+                $query->where('stock_quantity', '<=', 0);
+                break;
+            case 'low':
+                $query->where('stock_quantity', '>', 0)->where('stock_quantity', '<=', 5);
+                break;
+            case 'in':
+                $query->where('stock_quantity', '>', 5);
+                break;
         }
 
         if ($request->has('hot_group')) {
@@ -120,7 +172,7 @@ class ProductController extends Controller
             $query->where('price', '<=', $request->max_price);
         }
 
-        $allowedSortColumns = ['name', 'price', 'created_at', 'sales_count', 'stock_quantity'];
+        $allowedSortColumns = ['name', 'price', 'created_at', 'sales_count', 'stock_quantity', 'popular'];
         $orderBy            = in_array($request->get('sort_by'), $allowedSortColumns)
             ? $request->get('sort_by')
             : 'name';
@@ -130,6 +182,21 @@ class ProductController extends Controller
             $orderBy  = 'hot_order';
             $orderDir = 'asc';
         }
+
+        if ($orderBy === 'popular') {
+            // Витрина: сначала то, что можно купить, затем самые продаваемые,
+            // потом просматриваемые и новые. Флаг in_stock может отстать от
+            // остатка (продажа в минус на кассе), поэтому смотрим и на остаток.
+            $query->orderByRaw('CASE WHEN in_stock AND stock_quantity > 0 THEN 0 ELSE 1 END')
+                ->orderByDesc('sales_count')
+                ->orderByDesc('views_count')
+                ->orderByDesc('created_at');
+        } else {
+            $query->orderBy($orderBy, $orderDir);
+        }
+        // У импортированных товаров одинаковые created_at/sales_count — без
+        // id порядок при равенстве случайный и товары скачут между страницами
+        $query->orderBy('id', $orderBy === 'popular' ? 'desc' : $orderDir);
 
         $perPage = $request->get('per_page', 15);
 
@@ -157,7 +224,7 @@ class ProductController extends Controller
                 ]);
             }
 
-            $products = $query->orderBy($orderBy, $orderDir)->get();
+            $products = $query->get();
 
             if ($light) {
                 $products->makeHidden(['image_url', 'images_urls']);
@@ -175,7 +242,7 @@ class ProductController extends Controller
             ];
         }
 
-        $products = $query->orderBy($orderBy, $orderDir)->paginate($perPage);
+        $products = $query->paginate($perPage);
 
         if ($light) {
             $products->getCollection()->makeHidden(['image_url', 'images_urls']);
@@ -201,31 +268,19 @@ class ProductController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            $file     = $request->file('image');
-            $filename = 'image_' . time() . '_' . Str::random(6) . '.webp';
-            $path     = 'products/' . $filename;
-
-            $image = Image::make($file)->encode('webp', 90);
-            Storage::disk('public')->put($path, (string) $image);
-
-            $validated['image'] = $path;
+            $validated['image'] = $this->storeImage($request->file('image'), 'products');
         }
 
         if ($request->has('gallery_order')) {
             $galleryPaths = [];
             $newFiles = $request->file('gallery_files', []);
+            // У нового товара своих картинок нет — existing: из запроса не берём,
+            // иначе в галерею попадал бы чужой файл (см. update)
             foreach ($request->input('gallery_order') as $item) {
-                if (str_starts_with($item, 'existing:')) {
-                    $galleryPaths[] = substr($item, 9);
-                } elseif (str_starts_with($item, 'new:')) {
+                if (str_starts_with($item, 'new:')) {
                     $idx = (int) substr($item, 4);
                     if (isset($newFiles[$idx])) {
-                        $file = $newFiles[$idx];
-                        $filename = 'image_' . time() . '_' . Str::random(6) . '_' . $idx . '.webp';
-                        $path = 'products/gallery/' . $filename;
-                        $image = Image::make($file)->encode('webp', 90);
-                        Storage::disk('public')->put($path, (string) $image);
-                        $galleryPaths[] = $path;
+                        $galleryPaths[] = $this->storeImage($newFiles[$idx], 'products/gallery', '_' . $idx);
                     }
                 }
             }
@@ -233,11 +288,7 @@ class ProductController extends Controller
         } elseif ($request->hasFile('images')) {
             $galleryPaths = [];
             foreach ($request->file('images') as $key => $file) {
-                $filename = 'image_' . time() . '_' . Str::random(6) . '_' . ($key + 1) . '.webp';
-                $path     = 'products/gallery/' . $filename;
-                $image = Image::make($file)->encode('webp', 90);
-                Storage::disk('public')->put($path, (string) $image);
-                $galleryPaths[] = $path;
+                $galleryPaths[] = $this->storeImage($file, 'products/gallery', '_' . ($key + 1));
             }
             $validated['images'] = $galleryPaths;
         }
@@ -271,31 +322,26 @@ class ProductController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            $file     = $request->file('image');
-            $filename = 'image_' . time() . '_' . Str::random(6) . '.webp';
-            $path     = 'products/' . $filename;
-
-            $image = Image::make($file)->encode('webp', 90);
-            Storage::disk('public')->put($path, (string) $image);
-
-            $validated['image'] = $path;
+            $validated['image'] = $this->storeImage($request->file('image'), 'products');
         }
 
         if ($request->has('gallery_order')) {
             $galleryPaths = [];
             $newFiles = $request->file('gallery_files', []);
+            // existing: — только картинки, которые уже есть у этого товара.
+            // Иначе в галерею можно было вписать любой путь (например, логотип
+            // сайта), и удаление товара стирало чужой файл с диска.
+            $currentImages = (array) ($product->images ?? []);
             foreach ($request->input('gallery_order') as $item) {
                 if (str_starts_with($item, 'existing:')) {
-                    $galleryPaths[] = substr($item, 9);
+                    $path = substr($item, 9);
+                    if (in_array($path, $currentImages, true)) {
+                        $galleryPaths[] = $path;
+                    }
                 } elseif (str_starts_with($item, 'new:')) {
                     $idx = (int) substr($item, 4);
                     if (isset($newFiles[$idx])) {
-                        $file = $newFiles[$idx];
-                        $filename = 'image_' . time() . '_' . Str::random(6) . '_' . $idx . '.webp';
-                        $path = 'products/gallery/' . $filename;
-                        $image = Image::make($file)->encode('webp', 90);
-                        Storage::disk('public')->put($path, (string) $image);
-                        $galleryPaths[] = $path;
+                        $galleryPaths[] = $this->storeImage($newFiles[$idx], 'products/gallery', '_' . $idx);
                     }
                 }
             }
@@ -305,11 +351,7 @@ class ProductController extends Controller
         } elseif ($request->hasFile('images')) {
             $galleryPaths = [];
             foreach ($request->file('images') as $key => $file) {
-                $filename = 'image_' . time() . '_' . Str::random(6) . '_' . ($key + 1) . '.webp';
-                $path     = 'products/gallery/' . $filename;
-                $image = Image::make($file)->encode('webp', 90);
-                Storage::disk('public')->put($path, (string) $image);
-                $galleryPaths[] = $path;
+                $galleryPaths[] = $this->storeImage($file, 'products/gallery', '_' . ($key + 1));
             }
             $validated['images'] = $galleryPaths;
         }
@@ -344,9 +386,10 @@ class ProductController extends Controller
             $product->delete();
             return response()->json(['message' => 'Товар успешно удален'], 200);
         } catch (\Exception $e) {
+            // Текст исключения (SQL, пути) клиенту не отдаём — только в лог
+            \Illuminate\Support\Facades\Log::error('Product delete failed: ' . $e->getMessage(), ['product_id' => $product->id]);
             return response()->json([
                 'message' => 'Ошибка при удалении товара',
-                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -429,26 +472,49 @@ class ProductController extends Controller
         return response()->json(['description' => $description]);
     }
 
-    public function recognizeByPhoto(Request $request, AiService $aiService)
+    // Поиск по фото покупателя. Сначала — похожие картинки в каталоге
+    // (своя модель CLIP, бесплатно и без лимитов). Gemini — только запасной
+    // путь, если похожих не нашлось и задан ключ: у бесплатного тарифа
+    // ~20 запросов в сутки. Технические ошибки покупателю не показываем.
+    public function recognizeByPhoto(Request $request, AiService $aiService, ImageSearchService $imageSearch)
     {
         $request->validate([
-            'image' => 'required|image|max:20480',
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:20480',
         ]);
 
-        $file = $request->file('image');
-        $imageBase64 = base64_encode(file_get_contents($file->getRealPath()));
-        $mimeType = $file->getMimeType();
+        $file   = $request->file('image');
+        $binary = file_get_contents($file->getRealPath());
+        $hideCost = $this->canSeeCostPrice($request) ? [] : ['purchase_price', 'package_purchase_price'];
 
-        $result = $aiService->recognizeProductPhoto($imageBase64, $mimeType);
+        $similar = $imageSearch->isEnabled() ? $imageSearch->searchByPhoto($binary) : null;
+        $similarProducts = $similar
+            ? $similar->each(fn ($p) => $p->makeHidden($hideCost))->values()
+            : collect();
 
-        $items = array_map(function ($item) {
-            $item['matched_products'] = $this->matchProductsForRecognizedItem($item);
-            return $item;
-        }, $result['items'] ?? []);
+        $items    = [];
+        $aiFailed = true;
+        if ($similarProducts->isEmpty() && config('services.gemini.key')) {
+            $result   = $aiService->recognizeProductPhoto(base64_encode($binary), $file->getMimeType());
+            $aiFailed = ! empty($result['error']);
+            $items    = array_map(function ($item) use ($hideCost) {
+                $item['matched_products'] = $this->matchProductsForRecognizedItem($item)
+                    ->each(fn ($p) => $p->makeHidden($hideCost))
+                    ->values();
+                return $item;
+            }, $result['items'] ?? []);
+        }
+
+        $error = null;
+        if ($similarProducts->isEmpty() && empty($items)) {
+            $error = ($similar === null && $aiFailed)
+                ? 'Поиск по фото временно недоступен. Попробуйте найти товар по названию.'
+                : 'Похожих товаров не нашли. Сфотографируйте товар крупнее, на однотонном фоне, или найдите его по названию.';
+        }
 
         return response()->json([
-            'items' => $items,
-            'error' => $result['error'] ?? null,
+            'similar_products' => $similarProducts,
+            'items'            => $items,
+            'error'            => $error,
         ]);
     }
 

@@ -50,5 +50,6 @@ class Kernel extends HttpKernel
         'staff'            => \App\Http\Middleware\IsStaff::class,
         'permission'       => \App\Http\Middleware\CheckPermission::class,
         'self-service.device' => \App\Http\Middleware\EnsureSelfServiceDevice::class,
+        'idempotency'      => \App\Http\Middleware\Idempotency::class,
     ];
 }

@@ -2,31 +2,36 @@
 
 namespace App\Services;
 
-use App\Contracts\PaymentProviderInterface;
+use App\Exceptions\PaymentProviderUnavailableException;
 use App\Exceptions\SelfServiceException;
-use App\Models\FinancialTransaction;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Services\Payments\OrderQrPaymentService;
+use App\Services\Payments\PaymentSettlementService;
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Бизнес-логика кассы самообслуживания. Laravel — источник истины для цены,
  * остатка и итоговой суммы; frontend присылает только product_id/quantity.
  *
- * Остаток списывается ТОЛЬКО после подтверждения оплаты (confirmPayment),
- * не при создании заказа — иначе брошенная (неоплаченная) сессия кассы
- * навсегда "морозит" товар. Из-за этого отменённый/просроченный заказ не
- * требует возврата остатка (см. cancelOrder/getPaymentStatus).
+ * Остаток списывается ТОЛЬКО после подтверждения оплаты банком
+ * (PaymentSettlementService) — иначе брошенная (неоплаченная) сессия кассы
+ * навсегда «морозит» товар. Поэтому отменённый/просроченный заказ не требует
+ * возврата остатка.
  */
 class SelfServiceOrderService
 {
-    public function __construct(private PaymentProviderInterface $paymentProvider)
-    {
+    public function __construct(
+        private OrderQrPaymentService $qrPayments,
+        private PaymentSettlementService $settlement,
+    ) {
     }
 
     public function createOrder(array $items, ?string $terminalId, ?string $clientUuid = null): Order
@@ -36,7 +41,7 @@ class SelfServiceOrderService
         // чек-аута — второй вызов просто возвращает уже созданный заказ
         // вместо дубликата.
         if ($clientUuid) {
-            $existing = Order::where('uuid', $clientUuid)->where('channel', 'self_service')->first();
+            $existing = Order::where('uuid', $clientUuid)->where('channel', Order::CHANNEL_SELF_SERVICE)->first();
             if ($existing) {
                 return $existing->load('items', 'payments');
             }
@@ -46,9 +51,9 @@ class SelfServiceOrderService
             throw new SelfServiceException('Корзина пуста.');
         }
 
-        return DB::transaction(function () use ($items, $terminalId, $clientUuid) {
-            $subtotal       = 0;
-            $resolvedItems  = [];
+        $order = DB::transaction(function () use ($items, $terminalId, $clientUuid) {
+            $subtotal      = 0;
+            $resolvedItems = [];
 
             foreach ($items as $line) {
                 $product = Product::find($line['product_id']);
@@ -58,15 +63,23 @@ class SelfServiceOrderService
                 }
 
                 $qty = (float) $line['quantity'];
-                if ($qty <= 0) {
+                // Штучный товар — только целыми, как на кассе (PosSaleService):
+                // раньше киоск принимал 1.5 шт и выставлял счёт за полштуки
+                if ($qty <= 0 || (! $product->is_weighted && $product->requiresWholeQuantity() && floor($qty) != $qty)) {
                     throw new SelfServiceException("Некорректное количество для товара «{$product->name}».");
                 }
 
+                // Проверка до оплаты — чтобы не брать деньги за то, чего по
+                // учёту нет. После оплаты нехватка уже не отменяет продажу.
                 if ($product->stock_quantity < $qty) {
                     throw new SelfServiceException("Товара «{$product->name}» сейчас нет в достаточном количестве.");
                 }
 
-                $price = (float) ($product->sale_price ?? $product->price);
+                $price     = (float) ($product->sale_price ?? $product->price);
+                // Цена не заполнена (0) — иначе товар уходил бесплатно
+                if ($price <= 0) {
+                    throw new SelfServiceException("У товара «{$product->name}» не указана цена — обратитесь к сотруднику.");
+                }
                 $subtotal += $price * $qty;
 
                 $resolvedItems[] = ['product' => $product, 'quantity' => $qty, 'price' => $price];
@@ -74,7 +87,7 @@ class SelfServiceOrderService
 
             $terminalPrefix = $terminalId ?: 'SS1';
             $orderData      = [
-                'order_number'   => $this->nextOrderNumber($terminalPrefix),
+                'order_number'   => app(\App\Services\Orders\OrderNumberService::class)->next(Order::CHANNEL_SELF_SERVICE),
                 'user_id'        => null,
                 'staff_id'       => null,
                 'subtotal'       => $subtotal,
@@ -83,7 +96,7 @@ class SelfServiceOrderService
                 'status'         => 'pending',
                 'payment_status' => 'pending',
                 'payment_method' => 'qr',
-                'channel'        => 'self_service',
+                'channel'        => Order::CHANNEL_SELF_SERVICE,
                 'terminal_id'    => $terminalPrefix,
                 'currency'       => 'SOM',
                 'notes'          => "Касса самообслуживания ({$terminalPrefix})",
@@ -93,15 +106,21 @@ class SelfServiceOrderService
             }
 
             try {
-                $order = Order::create($orderData);
-            } catch (\Illuminate\Database\QueryException $e) {
-                // Гонка двух одновременных запросов с одним client_uuid (двойной тап
-                // по "Оплатить") — второй наткнётся на unique(uuid), просто отдаём
-                // заказ, который успел создать первый.
-                if ($clientUuid && (int) $e->getCode() === 23505) {
-                    return Order::where('uuid', $clientUuid)->firstOrFail()->load('items', 'payments');
+                // Вложенная транзакция = SAVEPOINT: в Postgres ошибка внутри
+                // транзакции «ломает» её целиком, и без точки сохранения
+                // следующий запрос падал бы с "current transaction is aborted"
+                $order = DB::transaction(fn () => Order::create($orderData));
+            } catch (QueryException $e) {
+                // Гонка двух одновременных запросов с одним client_uuid (двойной
+                // тап по "Оплатить") — второй наткнётся на unique(uuid)
+                if ($clientUuid && (string) $e->getCode() === '23505') {
+                    return Order::where('uuid', $clientUuid)->firstOrFail();
                 }
                 throw $e;
+            }
+
+            if (! $order->wasRecentlyCreated) {
+                return $order;
             }
 
             foreach ($resolvedItems as $line) {
@@ -118,23 +137,31 @@ class SelfServiceOrderService
                 ]);
             }
 
-            $payment = Payment::create([
-                'order_id'       => $order->id,
-                'payment_method' => 'qr',
-                'status'         => 'pending',
-                'amount'         => $subtotal,
-                'currency'       => 'SOM',
-            ]);
-
-            $paymentPayload = $this->paymentProvider->createPayment($order, $payment);
-
-            $payment->update([
-                'transaction_id'  => $paymentPayload['payment_id'],
-                'payment_details' => json_encode($paymentPayload),
-            ]);
-
-            return $order->fresh(['items', 'payments']);
+            return $order;
         });
+
+        if (! $order->wasRecentlyCreated) {
+            return $order->load('items', 'payments');
+        }
+
+        // QR — вне транзакции (внешний HTTP-вызов). Если провайдер не ответил,
+        // заказ удаляем целиком: оплаты по нему не было, а повтор с тем же
+        // client_uuid должен создать его заново, а не вернуть «мёртвый».
+        try {
+            $this->qrPayments->createQrPayment($order, null, 'qr');
+        } catch (\Throwable $e) {
+            Log::error('Self-service: не удалось создать QR: ' . $e->getMessage(), ['order_id' => $order->id]);
+            // forceDelete: Order «мягко» удаляемый, а мягко удалённая строка
+            // держала бы unique(uuid) и повтор с тем же client_uuid падал бы
+            DB::transaction(function () use ($order) {
+                $order->payments()->delete();
+                $order->items()->delete();
+                $order->forceDelete();
+            });
+            throw new SelfServiceException('Оплата сейчас недоступна. Попробуйте ещё раз через минуту.');
+        }
+
+        return $order->fresh(['items', 'payments']);
     }
 
     public function getPaymentStatus(Order $order): array
@@ -153,8 +180,7 @@ class SelfServiceOrderService
             $expiresAt = $details['expires_at'] ?? null;
 
             if ($expiresAt && now()->greaterThan(Carbon::parse($expiresAt))) {
-                $this->expireOrder($order, $payment);
-                return ['status' => 'expired'];
+                return ['status' => $this->expireOrder($order)];
             }
         }
 
@@ -163,18 +189,32 @@ class SelfServiceOrderService
 
     public function cancelOrder(Order $order): void
     {
-        if ($order->payment_status === 'paid') {
-            throw new SelfServiceException('Заказ уже оплачен, отменить нельзя — обратитесь на кассу.');
+        try {
+            // Сначала гасим QR у провайдера — по нему больше нельзя заплатить
+            if (! $this->qrPayments->cancelPendingPayments($order)) {
+                throw new SelfServiceException('Оплата уже прошла — заказ не отменён. Заберите чек.');
+            }
+        } catch (PaymentProviderUnavailableException $e) {
+            throw new SelfServiceException($e->getMessage());
         }
 
-        $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
-        $order->payments()->where('status', 'pending')->update(['status' => 'failed']);
+        DB::transaction(function () use ($order) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            // Оплата могла прийти между проверкой и блокировкой
+            if ($order->payment_status === 'paid') {
+                throw new SelfServiceException('Заказ уже оплачен, отменить нельзя — обратитесь на кассу.');
+            }
+
+            $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+            $order->payments()->whereIn('status', ['pending', 'processing'])->update(['status' => 'failed']);
+        });
     }
 
     public function payInfo(string $token): array
     {
         $payload = $this->decodeToken($token);
-        $order   = Order::where('id', $payload['order_id'])->where('channel', 'self_service')->first();
+        $order   = Order::where('id', $payload['order_id'])->where('channel', Order::CHANNEL_SELF_SERVICE)->first();
 
         if (! $order) {
             throw new SelfServiceException('Заказ не найден.');
@@ -196,145 +236,50 @@ class SelfServiceOrderService
         ];
     }
 
+    /**
+     * Демо-подтверждение оплаты временным QR (только local/testing, см.
+     * routes/api.php) — проводится тем же путём, что и настоящий вебхук.
+     */
     public function confirmPayment(string $token): Order
     {
         $payload = $this->decodeToken($token);
+        $order   = Order::find($payload['order_id']);
 
-        return DB::transaction(function () use ($payload) {
-            $order = Order::where('id', $payload['order_id'])->lockForUpdate()->first();
-            if (! $order || $order->channel !== 'self_service') {
-                throw new SelfServiceException('Заказ не найден.');
-            }
+        if (! $order || $order->channel !== Order::CHANNEL_SELF_SERVICE) {
+            throw new SelfServiceException('Заказ не найден.');
+        }
 
-            // Идемпотентность: повторный тап "Я оплатил" на уже оплаченном
-            // заказе просто возвращает текущее состояние, не задваивая продажу.
-            if ($order->payment_status === 'paid') {
-                return $order->fresh(['items']);
-            }
+        if ($order->payment_status !== 'paid' && ($order->status === 'cancelled' || $payload['exp'] < now()->timestamp)) {
+            throw new SelfServiceException('Время оплаты истекло. Начните покупку заново на кассе.');
+        }
 
-            if ($order->status === 'cancelled' || $payload['exp'] < now()->timestamp) {
-                $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
-                throw new SelfServiceException('Время оплаты истекло. Начните покупку заново на кассе.');
-            }
+        $this->settlement->settleCommitted($payload['payment_id']);
 
-            $payment = Payment::where('order_id', $order->id)
-                ->where('transaction_id', $payload['payment_id'])
-                ->lockForUpdate()
-                ->first();
-            if (! $payment) {
-                throw new SelfServiceException('Платёж не найден.');
-            }
-
-            $order->load('items');
-
-            // Финальная проверка остатка/активности перед списанием — цена и
-            // наличие уже проверялись при создании заказа, но за время, пока
-            // покупатель шёл от кассы к QR, могло измениться.
-            foreach ($order->items as $item) {
-                $product = Product::find($item->product_id);
-                if (! $product || ! $product->is_active || $product->stock_quantity < $item->quantity) {
-                    $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
-                    $payment->update(['status' => 'failed']);
-                    throw new SelfServiceException(
-                        "Товар «{$item->product_name}» закончился, пока шла оплата. Заказ отменён, обратитесь на кассу."
-                    );
-                }
-            }
-
-            foreach ($order->items as $item) {
-                $product = Product::find($item->product_id);
-                $product->decrement('stock_quantity', $item->quantity);
-                $product->increment('sales_count', $item->quantity);
-                $product->update(['in_stock' => $product->stock_quantity > 0]);
-            }
-
-            $order->update(['status' => 'delivered', 'payment_status' => 'paid']);
-            $payment->update(['status' => 'completed', 'paid_at' => now()]);
-
-            FinancialTransaction::create([
-                'user_id'        => null,
-                'type'           => 'income',
-                'amount'         => $order->total,
-                'category'       => 'Продажа товаров (Self-Service - QR)',
-                'description'    => "Оплата заказа Self-Service #{$order->order_number}",
-                'trackable_type' => Order::class,
-                'trackable_id'   => $order->id,
-                'payment_method' => 'qr',
-            ]);
-
-            return $order->fresh(['items']);
-        });
+        return $order->fresh(['items']);
     }
 
-    /**
-     * Вызывается вебхуком GoPay при payment.committed (callback_url,
-     * подпись проверена в GoPayWebhookController). Идемпотентно — повторная
-     * доставка того же события не задвоит продажу/списание остатка.
-     */
-    public function confirmPaymentFromGopay(string $gopayPaymentId): void
+    // QR истёк по времени: гасим его у провайдера (иначе банк ещё мог бы
+    // принять оплату по уже «мёртвому» для кассы заказу) и отменяем заказ.
+    // Возвращает итоговый статус для экрана кассы.
+    private function expireOrder(Order $order): string
     {
-        DB::transaction(function () use ($gopayPaymentId) {
-            $payment = Payment::where('transaction_id', $gopayPaymentId)->lockForUpdate()->first();
-            if (! $payment || $payment->status === 'completed') {
-                return;
+        try {
+            if (! $this->qrPayments->cancelPendingPayments($order)) {
+                return 'paid';
             }
+        } catch (PaymentProviderUnavailableException $e) {
+            // Провайдер не ответил — статус неизвестен, касса спросит ещё раз
+            return 'pending';
+        }
 
-            $order = Order::where('id', $payment->order_id)->lockForUpdate()->first();
-            if (! $order || $order->payment_status === 'paid') {
-                return;
-            }
-
-            if ($order->status === 'cancelled') {
-                // Банк подтвердил оплату после того, как заказ локально истёк
-                // или был отменён — остаток под ним уже не держится, повторно
-                // списывать его не трогаем. Деньги помечаем оплаченными для
-                // бухгалтерии, дальше нужна ручная проверка кассиром.
-                $payment->update(['status' => 'completed', 'paid_at' => now()]);
-                return;
-            }
-
-            $order->load('items');
-            foreach ($order->items as $item) {
-                $product = Product::find($item->product_id);
-                if (! $product || ! $product->is_active || $product->stock_quantity < $item->quantity) {
-                    $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
-                    $payment->update(['status' => 'failed']);
-                    return;
-                }
-            }
-
-            foreach ($order->items as $item) {
-                $product = Product::find($item->product_id);
-                $product->decrement('stock_quantity', $item->quantity);
-                $product->increment('sales_count', $item->quantity);
-                $product->update(['in_stock' => $product->stock_quantity > 0]);
-            }
-
-            $order->update(['status' => 'delivered', 'payment_status' => 'paid']);
-            $payment->update(['status' => 'completed', 'paid_at' => now()]);
-
-            FinancialTransaction::create([
-                'user_id'        => null,
-                'type'           => 'income',
-                'amount'         => $order->total,
-                'category'       => 'Продажа товаров (Self-Service - QR)',
-                'description'    => "Оплата заказа Self-Service #{$order->order_number}",
-                'trackable_type' => Order::class,
-                'trackable_id'   => $order->id,
-                'payment_method' => 'qr',
-            ]);
-        });
-    }
-
-    private function expireOrder(Order $order, Payment $payment): void
-    {
-        DB::transaction(function () use ($order, $payment) {
-            $order->refresh();
+        return DB::transaction(function () use ($order) {
+            $order = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
             if ($order->payment_status === 'paid') {
-                return;
+                return 'paid';
             }
             $order->update(['status' => 'cancelled', 'payment_status' => 'failed']);
-            $payment->update(['status' => 'failed']);
+
+            return 'expired';
         });
     }
 
@@ -351,23 +296,5 @@ class SelfServiceOrderService
         }
 
         return $payload;
-    }
-
-    // Тот же принцип нумерации, что и в PosController::store — заказы разных
-    // терминалов (касса кассира "k1", self-service "SS1") не пересекаются по
-    // номеру и остаются сортируемыми по возрастанию внутри терминала.
-    private function nextOrderNumber(string $terminalPrefix): string
-    {
-        $last = Order::where('order_number', 'like', "{$terminalPrefix}-%")
-            ->orderByRaw("CAST(SUBSTRING(order_number FROM '[0-9]+$') AS INTEGER) DESC")
-            ->first();
-
-        $next = 1;
-        if ($last) {
-            preg_match('/-(\d+)$/', $last->order_number, $m);
-            $next = isset($m[1]) ? (int) $m[1] + 1 : 1;
-        }
-
-        return "{$terminalPrefix}-{$next}";
     }
 }

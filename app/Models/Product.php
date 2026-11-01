@@ -106,6 +106,17 @@ class Product extends Model
         return $this->sale_price ?? $this->price;
     }
 
+    // Штучный товар нельзя продать в количестве 0.001 — дробное количество
+    // допустимо только для весовых/метражных единиц.
+    public function requiresWholeQuantity(): bool
+    {
+        if ($this->is_weighted) {
+            return false;
+        }
+
+        return in_array(mb_strtolower(trim((string) $this->unit), 'UTF-8'), ['', 'шт', 'шт.', 'pcs'], true);
+    }
+
     public function getDiscountPercentageAttribute()
     {
         if ($this->sale_price && $this->price > $this->sale_price) {

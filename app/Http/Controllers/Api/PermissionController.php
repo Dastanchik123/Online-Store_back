@@ -20,8 +20,12 @@ class PermissionController extends Controller
 
     public function updateRolePermissions(Request $request, $role)
     {
+        abort_unless(\App\Models\Role::where('name', $role)->exists(), 404, 'Роль не найдена');
+
+        // present, а не required: снять с роли все права — законное действие,
+        // а required отклонял пустой массив с 422
         $request->validate([
-            'permissions'   => 'required|array',
+            'permissions'   => 'present|array',
             'permissions.*' => 'string',
         ]);
 

@@ -1,0 +1,1 @@
+import{a2 as i,Z as o,a3 as r,P as a}from"./B6-a5nvy.js";const f=i(async(u,n)=>{let e,s;const t=o();t.isAuthenticated||([e,s]=r(()=>t.initAuth()),await e,s());{if(!t.isAuth)return a("/auth/staff");if(!t.hasPermission("pos.access")&&!t.hasPermission("cashier.access"))return a("/")}});export{f as default};

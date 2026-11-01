@@ -1,34 +1,43 @@
 name: Backend CI
 
+# Тесты на каждый push в любую ветку и на PR в main. БД — SQLite в памяти
+# (см. phpunit.xml), внешние сервисы не нужны: GoPay в тестах подменяется
+# FakePaymentProvider, ключи и секреты в CI не передаются.
 on:
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      # Та же версия, что в Dockerfile (php:8.3-fpm); расширения — как там,
+      # плюс pdo_sqlite для тестовой БД
+      - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
-          extensions: mbstring, exif, pcntl, bcmath, gd, zip, pdo_pgsql, pdo_sqlite, sqlite3
+          extensions: mbstring, pdo_sqlite, bcmath, gd, zip, exif, intl
           coverage: none
 
-      - name: Cache composer packages
+      - name: Cache Composer packages
         uses: actions/cache@v4
         with:
-          path: vendor
-          key: composer-${{ hashFiles('composer.lock') }}
+          path: ~/.composer/cache/files
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+        run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Prepare env
+      - name: Prepare .env
         run: |
           cp .env.example .env
           php artisan key:generate

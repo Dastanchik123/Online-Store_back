@@ -22,8 +22,8 @@ class BannerController extends Controller
         $validated = $request->validate([
             'title'       => 'nullable|string|max:255',
             'subtitle'    => 'nullable|string|max:255',
-            'image'       => 'required|image|max:20480',
-            'link_url'    => 'nullable|string',
+            'image'       => 'required|image|mimes:jpeg,png,jpg,webp|max:20480',
+            'link_url'    => ['nullable', 'string', 'max:2048', 'regex:#^(/(?!/)|https?://)#i'], // только свой путь или http(s): javascript: в ссылке баннера = XSS
             'button_text' => 'nullable|string',
             'section'     => 'nullable|string',
             'order'       => 'integer',
@@ -43,8 +43,8 @@ class BannerController extends Controller
         $validated = $request->validate([
             'title'       => 'nullable|string|max:255',
             'subtitle'    => 'nullable|string|max:255',
-            'image'       => 'nullable|image|max:20480',
-            'link_url'    => 'nullable|string',
+            'image'       => 'nullable|image|mimes:jpeg,png,jpg,webp|max:20480',
+            'link_url'    => ['nullable', 'string', 'max:2048', 'regex:#^(/(?!/)|https?://)#i'], // только свой путь или http(s): javascript: в ссылке баннера = XSS
             'button_text' => 'nullable|string',
             'section'     => 'nullable|string',
             'order'       => 'integer',

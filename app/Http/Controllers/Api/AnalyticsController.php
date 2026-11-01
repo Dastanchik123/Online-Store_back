@@ -23,7 +23,6 @@ class AnalyticsController extends Controller
             'summary'             => $this->getSummaryData($startDate, $endDate),
             'inventory'           => $this->getInventoryData(),
             'clients'             => $this->getClientData(),
-            'alerts'              => $this->getAlerts(),
             'chart_data'          => $this->getChartData($startDate, $endDate),
             'recent_transactions' => FinancialTransaction::with('user')->latest()->limit(5)->get(),
         ]);
@@ -159,25 +158,6 @@ class AnalyticsController extends Controller
             'active_shopper_count' => $activeUsers,
             'total_debts'          => (float) $debtsTotal,
         ];
-    }
-
-    private function getAlerts()
-    {
-        $lowStock = Product::where('stock_quantity', '>', 0)
-            ->where('stock_quantity', '<', 3)
-            ->get();
-
-        $alerts = [];
-        foreach ($lowStock as $p) {
-            $alerts[] = [
-                'type'     => 'low_stock',
-                'priority' => 'high',
-                'message'  => "Товар {$p->name} заканчивается (остаток: {$p->stock_quantity})",
-                'data' => ['product_id' => $p->id],
-            ];
-        }
-
-        return $alerts;
     }
 
     private function getChartData($start, $end)

@@ -89,7 +89,7 @@ class SupplierController extends Controller
             
             if ($supplier->purchases()->exists()) {
                 return response()->json([
-                    'message' => 'Integrity Error: Cannot delete supplier with existing purchase records. Consider archiving instead.',
+                    'message' => 'Нельзя удалить поставщика: по нему есть закупки.',
                 ], 422);
             }
 

@@ -43,9 +43,16 @@ class TemporaryQrPaymentProvider implements PaymentProviderInterface
         ];
     }
 
-    public function cancelPayment(Payment $payment): void
+    public function cancelPayment(Payment $payment): string
     {
         // Временному провайдеру нечего отменять на стороне банка — статус
-        // платежа обновляет сам SelfServiceOrderService.
+        // платежа обновляют сами сервисы заказов.
+        return self::CANCEL_CANCELLED;
+    }
+
+    public function fetchStatus(Payment $payment): ?string
+    {
+        // Оплату временного QR подтверждает сам покупатель (/pay/{token}/confirm)
+        return null;
     }
 }

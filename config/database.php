@@ -6,7 +6,9 @@ return [
 
 
 
-    'default' => env('DB_CONNECTION', 'mysql'),
+    // Код использует Postgres-специфичный SQL (SUBSTRING ... FROM, ~, ilike,
+    // pg_trgm) — другие СУБД, кроме sqlite в тестах, не поддерживаются.
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
 
 
@@ -53,6 +55,9 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'schema' => 'public',
+            // часовой пояс сессии PostgreSQL — чтобы NOW()/CURRENT_TIMESTAMP
+            // совпадали с часовым поясом приложения
+            'timezone' => env('APP_TIMEZONE', 'Asia/Bishkek'),
         ],
 
         'sqlsrv' => [

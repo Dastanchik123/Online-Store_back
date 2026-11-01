@@ -26,8 +26,11 @@ class OrderStatusUpdated implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            // Покупатель на странице отслеживания заказа
-            new Channel('order.' . $this->order->order_number),
+            // Покупатель на странице отслеживания заказа. По uuid, а не по
+            // номеру: номера чеков идут подряд, и на канал «order.P-15»
+            // можно было подписаться, перебирая номера, не делая ни одного
+            // запроса к API (uuid выдаёт только троттлируемый trackByNumber)
+            new Channel('order.' . $this->order->uuid),
             // Админка/касса/закупщик — живое обновление списка заказов
             new PrivateChannel('admin.orders'),
         ];

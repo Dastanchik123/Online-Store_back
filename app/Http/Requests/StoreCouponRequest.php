@@ -18,6 +18,7 @@ class StoreCouponRequest extends FormRequest
             'type'             => 'required|in:fixed,percent',
             'value'            => array_filter(['required', 'numeric', 'min:0', $this->percentLimit($this->input('type'))]),
             'min_order_amount' => 'nullable|numeric|min:0',
+            'usage_limit'      => 'nullable|integer|min:1',
             'is_active'        => 'boolean',
             'expires_at'       => 'nullable|date',
         ];

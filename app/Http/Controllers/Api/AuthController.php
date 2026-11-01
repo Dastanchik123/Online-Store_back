@@ -3,6 +3,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Auth\PhoneLoginService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -59,6 +60,32 @@ class AuthController extends Controller
     }
 
     
+    // Вход покупателя по номеру: шаг 1 — SMS с кодом
+    public function sendPhoneCode(Request $request, PhoneLoginService $phoneLogin)
+    {
+        $request->validate(['phone' => 'required|string|max:32']);
+
+        return response()->json($phoneLogin->sendCode($request->phone, $request->ip()));
+    }
+
+    // Шаг 2 — код из SMS. needs_name: новый покупатель, спросить имя
+    public function verifyPhoneCode(Request $request, PhoneLoginService $phoneLogin)
+    {
+        $request->validate([
+            'phone' => 'required|string|max:32',
+            'code'  => 'required|string|max:8',
+        ]);
+
+        $result = $phoneLogin->verify($request->phone, $request->code);
+
+        return response()->json([
+            'user'       => $result['user'],
+            'token'      => $result['token'],
+            'token_type' => 'Bearer',
+            'needs_name' => $result['needs_name'],
+        ]);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
@@ -76,10 +103,12 @@ class AuthController extends Controller
     {
         $user = $request->user();
 
+        // Email необязателен: покупатель может о нём не знать. Номер, по
+        // которому он входит, меняется только через магазин
         $validated = $request->validate([
             'name'   => 'required|string|max:255',
-            'email'  => 'required|email|max:255|unique:users,email,' . $user->id,
-            'avatar' => 'nullable|image|max:2048',
+            'email'  => 'sometimes|nullable|email|max:255|unique:users,email,' . $user->id,
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
 
         if ($request->hasFile('avatar')) {

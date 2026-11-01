@@ -31,6 +31,13 @@ class CouponController extends Controller
             return response()->json(['message' => 'Купон недействителен или истек'], 400);
         }
 
+        // Персонал (касса) проверяет купон за покупателя — лимит "один раз
+        // на покупателя" относится только к собственным заказам клиента
+        $user = $request->user();
+        if ($user->role === 'user' && $coupon->wasUsedBy($user->id)) {
+            return response()->json(['message' => 'Вы уже использовали этот купон'], 400);
+        }
+
         if ($request->amount < $coupon->min_order_amount) {
             return response()->json(['message' => "Минимальная сумма заказа для этого купона: {$coupon->min_order_amount}"], 400);
         }

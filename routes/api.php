@@ -35,12 +35,22 @@ Route::middleware('throttle:5,1')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// Вход покупателя по номеру телефона и коду из SMS. Лимиты на SMS (на номер
+// и IP в час) — в PhoneLoginService; здесь — грубая защита от перебора кода
+Route::prefix('auth/phone')->group(function () {
+    Route::post('/send-code', [AuthController::class, 'sendPhoneCode'])->middleware('throttle:5,1');
+    Route::post('/verify', [AuthController::class, 'verifyPhoneCode'])->middleware('throttle:10,1');
+});
+
+Route::get('/ping', \App\Http\Controllers\Api\PingController::class);
+
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
 
 Route::get('/products', [ProductController::class, 'index']);
-Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
-Route::get('/products/{product}', [ProductController::class, 'show']);
+// generate-sku — только для персонала (группа products.edit ниже); раньше
+// публичный дубль этого роута перехватывал запрос без авторизации.
+Route::get('/products/{product}', [ProductController::class, 'show'])->where('product', '(?!generate-sku$)[^/]+');
 
 // Поиск товара по фото (Gemini Vision) — отдельный строгий лимит, т.к. каждый
 // запрос дороже обычного каталожного и оплачивается через Gemini API.
@@ -57,6 +67,10 @@ Route::get('/settings/public', [SettingController::class, 'publicSettings']);
 Route::get('/banners', [BannerController::class, 'index']);
 
 Route::get('/orders/track/{orderNumber}', [OrderController::class, 'trackByNumber']);
+
+// Электронная копия чека по QR с бумажного чека — только по uuid заказа
+Route::get('/receipts/{uuid}', [\App\Http\Controllers\Api\ReceiptController::class, 'show'])
+    ->middleware('throttle:30,1');
 
 // Касса самообслуживания — гость без логина, поэтому вне auth:sanctum.
 // Каталог self-service использует существующие публичные /products,
@@ -76,17 +90,27 @@ Route::prefix('self-service')->middleware('throttle:60,1')->group(function () {
         Route::get('/orders/{orderUuid}/payment-status', [\App\Http\Controllers\Api\SelfServiceController::class, 'paymentStatus']);
         Route::post('/orders/{orderUuid}/cancel', [\App\Http\Controllers\Api\SelfServiceController::class, 'cancel']);
         Route::get('/orders/{orderUuid}/receipt', [\App\Http\Controllers\Api\SelfServiceController::class, 'receipt']);
+
+        // PIN/бейдж сотрудника для удаления товара из корзины — строгий
+        // rate-limit против перебора короткого PIN прямо на кассе
+        Route::post('/staff-override', [\App\Http\Controllers\Api\SelfServiceStaffController::class, 'authorizeOverride'])
+            ->middleware('throttle:10,1');
     });
 
-    // Подтверждение QR-оплаты — открывается на телефоне покупателя по ссылке
-    // из QR, доступ даёт только знание токена (шифрованный, с TTL), не логин.
-    // Телефон покупателя не имеет device-токена киоска, поэтому вне middleware выше.
-    Route::get('/pay/{token}', [\App\Http\Controllers\Api\SelfServiceController::class, 'payInfo']);
-    Route::post('/pay/{token}/confirm', [\App\Http\Controllers\Api\SelfServiceController::class, 'confirmPayment']);
+    // Демо-подтверждение оплаты временным QR (TemporaryQrPaymentProvider):
+    // покупатель сам жмёт «Я оплатил». Провайдер работает только в
+    // local/testing — на проде этих роутов нет вовсе, оплату подтверждает
+    // только подписанный вебхук GoPay.
+    if (app()->environment(['local', 'testing'])) {
+        Route::get('/pay/{token}', [\App\Http\Controllers\Api\SelfServiceController::class, 'payInfo']);
+        Route::post('/pay/{token}/confirm', [\App\Http\Controllers\Api\SelfServiceController::class, 'confirmPayment']);
+    }
 
-    // Вебхук GoPay (payment.committed) — подлинность проверяется HMAC-подписью
-    // внутри контроллера, не мидлваром, поэтому вне auth/device-групп выше.
-    Route::post('/gopay/webhook', [\App\Http\Controllers\Api\GoPayWebhookController::class, 'handle']);
+    // Вебхук GoPay (events_url и legacy callback_url) — подлинность
+    // проверяется HMAC-подписью внутри контроллера, поэтому вне auth/device-групп.
+    // Адрес сохранён прежним: он уже прописан у GoPay как callback_url.
+    Route::post('/gopay/webhook', [\App\Http\Controllers\Api\GoPayWebhookController::class, 'handle'])
+        ->withoutMiddleware('throttle:60,1');
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -117,6 +141,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/products/generate-sku', [ProductController::class, 'generateSku']);
             Route::post('/products/ai-description', [ProductController::class, 'aiDescription']);
             Route::post('/products/{product}/weighted-barcode', [ProductController::class, 'generateWeightedBarcode']);
+            // Группы горячих товаров (/admin/hot-products)
+            Route::post('/hot-groups', [SettingController::class, 'updateHotGroups']);
+            Route::post('/hot-groups/rename', [SettingController::class, 'renameHotGroup']);
+            Route::post('/hot-groups/delete', [SettingController::class, 'deleteHotGroup']);
         });
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:products.delete');
@@ -171,6 +199,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:debts.view')->group(function () {
             Route::get('accounting/debts', [AccountingController::class, 'debts']);
             Route::post('accounting/debts/{debt}/pay', [AccountingController::class, 'payDebt']);
+            // Погашение безналом — QR GoPay
+            Route::post('accounting/debts/{debt}/qr', [AccountingController::class, 'createDebtQr']);
+            Route::get('accounting/debts/qr/{payment}', [AccountingController::class, 'debtQrStatus']);
+            Route::post('accounting/debts/qr/{payment}/cancel', [AccountingController::class, 'cancelDebtQr']);
         });
         // Удаление долга/платежа — деструктивная операция, требует отдельного
         // права, а не просто "просмотр" (debts.view). См. аудит удаления.
@@ -208,6 +240,8 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('permission:products.view')->group(function () {
+            // Очередь печати этикеток (/admin/print-labels) — не только админу
+            Route::post('/print-label-queue', [SettingController::class, 'updatePrintQueue']);
             Route::get('reports/products/{product}/barcode', [ReportController::class, 'barcode']);
             Route::post('/barcodes/parse', [\App\Http\Controllers\Api\BarcodeController::class, 'parse']);
         });
@@ -231,6 +265,13 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/self-service-devices', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'store']);
             Route::post('/self-service-devices/{device}/pairing-code', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'issuePairingCode']);
             Route::post('/self-service-devices/{device}/revoke', [\App\Http\Controllers\Api\SelfServiceDeviceController::class, 'revoke']);
+        });
+
+        Route::middleware('permission:alerts.manage')->group(function () {
+            Route::get('/alerts', [\App\Http\Controllers\Api\AlertController::class, 'index']);
+            Route::get('/alerts/count', [\App\Http\Controllers\Api\AlertController::class, 'count']);
+            Route::post('/alerts/{alert}/resolve', [\App\Http\Controllers\Api\AlertController::class, 'resolve']);
+            Route::post('/alerts/{alert}/refund-cash', [\App\Http\Controllers\Api\AlertController::class, 'refundCash']);
         });
 
         Route::middleware('permission:marketing.manage')->group(function () {
@@ -290,18 +331,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
 
     Route::middleware('permission:pos.access,cashier.access')->group(function () {
-        Route::post('/pos/sales', [\App\Http\Controllers\Api\PosController::class, 'store']);
+        Route::post('/pos/sales', [\App\Http\Controllers\Api\PosController::class, 'store'])
+            ->middleware('idempotency');
+        // Продажа с QR-частью ждёт подтверждения банка: статус, отмена, новый QR
+        Route::get('/pos/sales/{order}/status', [\App\Http\Controllers\Api\PosController::class, 'saleStatus']);
+        Route::post('/pos/sales/{order}/cancel', [\App\Http\Controllers\Api\PosController::class, 'cancelSale']);
+        Route::post('/pos/sales/{order}/qr', [\App\Http\Controllers\Api\PosController::class, 'regenerateSaleQr']);
         Route::get('/pos/products/search', [\App\Http\Controllers\Api\PosController::class, 'searchProducts']);
         Route::get('/pos/summary', [\App\Http\Controllers\Api\PosController::class, 'summary']);
         Route::get('/pos/staff', [\App\Http\Controllers\Api\PosController::class, 'getStaff']);
+        Route::get('/pos/customers', [\App\Http\Controllers\Api\PosController::class, 'searchCustomers']);
+        Route::post('/pos/customers', [\App\Http\Controllers\Api\PosController::class, 'createCustomer']);
         Route::get('/pos/products', [\App\Http\Controllers\Api\PosController::class, 'getAllProducts']);
-        Route::post('/pos/sales/{id}/confirm', [\App\Http\Controllers\Api\PosController::class, 'confirmFinance']);
         Route::post('/pos/scan-checkout', [\App\Http\Controllers\Api\PosController::class, 'scanCheckout']);
-    });
-
-    // Sync Routes for Offline POS
-    Route::prefix('sync')->group(function () {
-        Route::get('/pull', [\App\Http\Controllers\Api\SyncController::class, 'pull']);
-        Route::post('/push', [\App\Http\Controllers\Api\SyncController::class, 'push']);
     });
 });

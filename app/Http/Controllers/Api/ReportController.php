@@ -259,7 +259,8 @@ class ReportController extends Controller
         // Высота чека зависит от количества позиций, чтобы весь чек уместился
         // на одной непрерывной "ленте" вместо разбивки на несколько страниц.
         $itemCount = $order->items->count();
-        $height = max(500, 320 + $itemCount * 34);
+        // Запас под увеличенные для термопечати шрифты (13px строки, 20px итог)
+        $height = max(560, 380 + $itemCount * 40);
 
         $pdf = Pdf::loadView('pdf.thermal_receipt', array_merge(['order' => $order, 'settings' => $settings], $settings));
         $pdf->setPaper([0, 0, 226.77, $height], 'portrait');
@@ -291,6 +292,7 @@ class ReportController extends Controller
             'site_inn',
             'contact_phone',
             'contact_address',
+            'receipt_public_url',
         ];
 
         $settings = \App\Models\Setting::whereIn('key', $keys)->pluck('value', 'key');
@@ -304,6 +306,7 @@ class ReportController extends Controller
             'site_inn'        => $settings['site_inn'] ?? null,
             'contact_phone'   => $settings['contact_phone'] ?? null,
             'contact_address' => $settings['contact_address'] ?? null,
+            'receipt_public_url' => $settings['receipt_public_url'] ?? null,
         ];
     }
 
@@ -314,28 +317,13 @@ class ReportController extends Controller
         return $pdf->stream("Штрихкод_{$product->sku}.pdf");
     }
 
+    // Настоящий .xlsx: HTML-таблица под видом .xls вызывала предупреждение
+    // в Excel 2013 и не открывалась на телефонах
     private function exportExcel($rows, $headings, $filename)
     {
-        $output  = '<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>';
-        $output .= '<table border="1">';
-        $output .= '<tr style="background-color: #f2f2f2;">';
-        foreach ($headings as $heading) {
-            $output .= '<th>' . htmlspecialchars($heading) . '</th>';
-        }
-        $output .= '</tr>';
-
-        foreach ($rows as $row) {
-            $output .= '<tr>';
-            foreach ($row as $cell) {
-                $output .= '<td>' . htmlspecialchars($cell) . '</td>';
-            }
-            $output .= '</tr>';
-        }
-        $output .= '</table></body></html>';
-
-        return response($output, 200, [
-            'Content-Type'        => 'application/vnd.ms-excel',
-            'Content-Disposition' => $this->contentDisposition($filename . '.xls'),
+        return response(\App\Support\XlsxWriter::build($headings, $rows, 'Отчёт'), 200, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => $this->contentDisposition($filename . '.xlsx'),
         ]);
     }
 }

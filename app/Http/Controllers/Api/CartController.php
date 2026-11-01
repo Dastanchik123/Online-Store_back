@@ -26,6 +26,23 @@ class CartController extends Controller
     }
 
     
+    // Окончательно цена/остаток проверяются в OrderController::store под
+    // блокировкой; здесь — ранняя подсказка покупателю ещё в корзине.
+    private function quantityError(?Product $product, float $quantity): ?string
+    {
+        if (! $product || ! $product->is_active || ! $product->in_stock) {
+            return 'Product is out of stock';
+        }
+        if ($product->requiresWholeQuantity() && floor($quantity) != $quantity) {
+            return "Товар «{$product->name}» продаётся только целыми штуками";
+        }
+        if ((float) $product->stock_quantity < $quantity) {
+            return "Недостаточно товара «{$product->name}»: в наличии {$product->stock_quantity}";
+        }
+
+        return null;
+    }
+
     public function index()
     {
         $cart = $this->getOrCreateCart();
@@ -48,8 +65,8 @@ class CartController extends Controller
 
         $product = Product::findOrFail($validated['product_id']);
 
-        if (!$product->in_stock) {
-            return response()->json(['message' => 'Product is out of stock'], 400);
+        if ($error = $this->quantityError($product, (float) $validated['quantity'])) {
+            return response()->json(['message' => $error], 400);
         }
 
         $cart = $this->getOrCreateCart();
@@ -91,8 +108,8 @@ class CartController extends Controller
         }
 
         $product = $cartItem->product;
-        if (!$product->in_stock) {
-            return response()->json(['message' => 'Product is out of stock'], 400);
+        if ($error = $this->quantityError($product, (float) $validated['quantity'])) {
+            return response()->json(['message' => $error], 400);
         }
 
         $cartItem->update(['quantity' => $validated['quantity']]);

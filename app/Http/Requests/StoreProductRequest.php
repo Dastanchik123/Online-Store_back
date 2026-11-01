@@ -22,7 +22,7 @@ class StoreProductRequest extends FormRequest
             'sku'               => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')],
             'purchase_price'    => 'nullable|numeric|min:0',
             'price'             => 'required|numeric|min:0',
-            'sale_price'        => 'nullable|numeric|min:0',
+            'sale_price'        => 'nullable|numeric|min:0|lt:price',
             'stock_quantity'    => 'nullable|numeric|min:0',
             'in_stock'          => 'boolean',
             'is_active'         => 'boolean',
@@ -32,6 +32,12 @@ class StoreProductRequest extends FormRequest
 
             'images'            => 'nullable|array',
             'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:20480',
+            // Галерея с порядком (gallery_order + gallery_files): раньше файлы не
+            // проверялись — не-картинка валила Image::make с 500
+            'gallery_order'     => 'nullable|array',
+            'gallery_order.*'   => ['string', 'regex:/^(existing:.+|new:\d+)$/'],
+            'gallery_files'     => 'nullable|array',
+            'gallery_files.*'   => 'image|mimes:jpeg,png,jpg,webp|max:20480',
 
             'category_id'       => 'required|exists:categories,id',
             'weight'            => 'nullable|numeric|min:0',

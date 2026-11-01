@@ -1,17 +1,23 @@
 <?php
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\PaymentProviderUnavailableException;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerDebt;
 use App\Models\DebtPayment;
 use App\Models\FinancialTransaction;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Product;
+use App\Services\Debts\DebtPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AccountingController extends Controller
 {
+    public function __construct(private DebtPaymentService $debtPayments)
+    {
+    }
 
     public function debts(Request $request)
     {
@@ -44,7 +50,7 @@ class AccountingController extends Controller
             });
         }
 
-        return $query->latest()->paginate($request->get('per_page', 15));
+        return $query->latest()->paginate(min(max((int) $request->get('per_page', 15), 1), 200));
     }
 
     public function payDebt(Request $request, CustomerDebt $debt)
@@ -53,46 +59,70 @@ class AccountingController extends Controller
             return response()->json(['message' => 'Forbidden. Missing permission: debts.view'], 403);
         }
 
+        // Наличными — здесь; безнал — только через QR GoPay (createDebtQr):
+        // ручные «MBank/Карта» нельзя было проверить
         $validated = $request->validate([
             'amount'         => 'required|numeric|min:0.01',
-            'payment_method' => 'nullable|string',
+            'payment_method' => 'nullable|string|in:cash',
         ]);
 
-        return DB::transaction(function () use ($validated, $debt) {
-            $payment = DebtPayment::create([
-                'customer_debt_id' => $debt->id,
-                'amount'           => $validated['amount'],
-                'payment_method'   => $validated['payment_method'],
-            ]);
+        $debt = $this->debtPayments->payCash($debt, (float) $validated['amount'], auth()->id());
 
-            $debt->increment('paid_amount', $validated['amount']);
-            $debt->remaining_amount = $debt->total_amount - $debt->paid_amount;
+        return response()->json($debt->load('payments', 'user', 'order'));
+    }
 
-            if ($debt->remaining_amount <= 0) {
-                $debt->status           = 'paid';
-                $debt->remaining_amount = 0;
+    // Безнал: QR GoPay на сумму выплаты. В долг записывается только после
+    // подтверждения банка (вебхук или проверка статуса)
+    public function createDebtQr(Request $request, CustomerDebt $debt)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+        ]);
 
-                if ($debt->order_id) {
-                    $debt->order()->update(['payment_status' => 'paid']);
-                }
-            } else {
-                $debt->status = 'partial';
-            }
-            $debt->save();
+        try {
+            $payment = $this->debtPayments->createQr($debt, (float) $validated['amount']);
+        } catch (PaymentProviderUnavailableException $e) {
+            return response()->json(['message' => $e->getMessage()], 503);
+        }
 
-            FinancialTransaction::create([
-                'user_id'        => auth()->id(),
-                'type'           => 'income',
-                'amount'         => $validated['amount'],
-                'category'       => 'debt_payment',
-                'trackable_type' => DebtPayment::class,
-                'trackable_id'   => $payment->id,
-                'description'    => "Оплата долга от пользователя #{$debt->user_id}",
-                'payment_method' => $validated['payment_method'] ?? 'cash',
-            ]);
+        return response()->json($this->presentDebtQr($payment), 201);
+    }
 
-            return response()->json($debt->load('payments', 'user', 'order'));
-        });
+    public function debtQrStatus(Request $request, Payment $payment)
+    {
+        abort_unless($payment->customer_debt_id, 404);
+
+        $payment = $this->debtPayments->qrStatus($payment, $request->boolean('check'));
+
+        return response()->json($this->presentDebtQr($payment));
+    }
+
+    public function cancelDebtQr(Payment $payment)
+    {
+        abort_unless($payment->customer_debt_id, 404);
+
+        try {
+            $payment = $this->debtPayments->cancelQr($payment);
+        } catch (PaymentProviderUnavailableException $e) {
+            return response()->json(['message' => $e->getMessage()], 503);
+        }
+
+        return response()->json($this->presentDebtQr($payment));
+    }
+
+    // QR-погашение для окна ожидания: статус, данные QR и долг после оплаты
+    private function presentDebtQr(Payment $payment): array
+    {
+        $details = json_decode((string) $payment->payment_details, true) ?: [];
+
+        return [
+            'id'         => $payment->id,
+            'status'     => $payment->status,
+            'amount'     => (float) $payment->amount,
+            'qr_value'   => $details['qr_value'] ?? null,
+            'expires_at' => $details['expires_at'] ?? null,
+            'debt'       => CustomerDebt::with('payments', 'user', 'order')->find($payment->customer_debt_id),
+        ];
     }
 
     public function deleteDebtPayment(DebtPayment $payment)
@@ -102,11 +132,21 @@ class AccountingController extends Controller
         }
 
         return DB::transaction(function () use ($payment) {
-            $debt   = $payment->debt;
+            $debt   = CustomerDebt::whereKey($payment->customer_debt_id)->lockForUpdate()->firstOrFail();
             $amount = $payment->amount;
 
-            $debt->decrement('paid_amount', $amount);
-            $debt->remaining_amount = $debt->total_amount - $debt->paid_amount;
+            // По отменённому заказу деньги уже возвращены покупателю — удаление
+            // платежа оставило бы возврат без прихода
+            if ($debt->status === 'cancelled') {
+                return response()->json(['message' => 'Долг отменён вместе с заказом — платёж удалить нельзя.'], 409);
+            }
+            // Деньги подтвердил банк — удаление разошлось бы с выпиской GoPay
+            if ($payment->payment_method === DebtPaymentService::METHOD_QR) {
+                return response()->json(['message' => 'Оплату по QR через банк удалить нельзя.'], 409);
+            }
+
+            $debt->paid_amount      = round((float) $debt->paid_amount - (float) $amount, 2);
+            $debt->remaining_amount = round((float) $debt->total_amount - (float) $debt->paid_amount, 2);
 
             if ($debt->paid_amount <= 0) {
                 $debt->status = 'active';
@@ -145,15 +185,17 @@ class AccountingController extends Controller
             return response()->json(['message' => 'Нельзя удалить неоплаченный долг'], 400);
         }
 
+        // Выплаты по долгу — реально полученные деньги: раньше удаление
+        // стирало их приход из финансов (выручка пропадала из отчётов), а при
+        // отмене заказа возвращалось меньше, чем покупатель внёс
+        // (OrderLifecycleService::receivedAmount считает их через долг)
+        if ($debt->payments()->exists()) {
+            return response()->json([
+                'message' => 'По долгу были выплаты — он остаётся в истории для учёта денег. Удалить можно только долг без выплат.',
+            ], 409);
+        }
+
         return DB::transaction(function () use ($debt) {
-
-            foreach ($debt->payments as $payment) {
-                FinancialTransaction::where('trackable_type', DebtPayment::class)
-                    ->where('trackable_id', $payment->id)
-                    ->delete();
-                $payment->delete();
-            }
-
             $debt->delete();
 
             return response()->json(['message' => 'Debt deleted successfully']);

@@ -24,7 +24,14 @@ class UpdateProductRequest extends FormRequest
             'sku'               => ['sometimes', 'required', 'string', 'max:255', Rule::unique('products', 'sku')->whereNull('deleted_at')->ignore($product->id)],
             'purchase_price'    => 'nullable|numeric|min:0',
             'price'             => 'sometimes|required|numeric|min:0',
-            'sale_price'        => 'nullable|numeric|min:0',
+            // Акционная цена ниже обычной: цена может не прийти в запросе —
+            // тогда сравниваем с текущей ценой товара
+            'sale_price'        => ['nullable', 'numeric', 'min:0', function ($attribute, $value, $fail) use ($product) {
+                $price = $this->input('price', $product->price);
+                if (is_numeric($price) && (float) $value >= (float) $price) {
+                    $fail('Цена по акции должна быть ниже обычной цены.');
+                }
+            }],
             'in_stock'          => 'boolean',
             'is_active'         => 'boolean',
             'is_hot'            => 'boolean',
@@ -32,6 +39,10 @@ class UpdateProductRequest extends FormRequest
             'image'             => 'nullable|image|mimes:jpeg,png,jpg,webp|max:20480',
             'images'            => 'nullable|array',
             'images.*'          => 'image|mimes:jpeg,png,jpg,webp|max:20480',
+            'gallery_order'     => 'nullable|array',
+            'gallery_order.*'   => ['string', 'regex:/^(existing:.+|new:\d+)$/'],
+            'gallery_files'     => 'nullable|array',
+            'gallery_files.*'   => 'image|mimes:jpeg,png,jpg,webp|max:20480',
 
             'category_id'       => 'sometimes|required|exists:categories,id',
             'weight'            => 'nullable|numeric|min:0',

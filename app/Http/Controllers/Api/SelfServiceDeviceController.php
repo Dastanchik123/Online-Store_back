@@ -20,7 +20,9 @@ class SelfServiceDeviceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'terminal_id' => 'required|string|max:50',
+            // Две кассы с одним terminal_id неразличимы в заказах и отчётах;
+            // отозванную кассу привязывают заново новым кодом пейринга
+            'terminal_id' => 'required|string|max:50|unique:self_service_devices,terminal_id',
             'label'       => 'nullable|string|max:100',
         ]);
 
@@ -35,9 +37,12 @@ class SelfServiceDeviceController extends Controller
     {
         $code = (string) random_int(100000, 999999);
 
+        // Выпуск кода снимает отзыв: старый токен уже стёрт при revoke(),
+        // а без этого отозванную кассу нельзя было привязать заново
         $device->update([
             'pairing_code'             => $code,
             'pairing_code_expires_at'  => Carbon::now()->addMinutes(10),
+            'revoked_at'               => null,
         ]);
 
         return response()->json([

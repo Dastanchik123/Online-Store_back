@@ -20,7 +20,12 @@ return [
     // Локальная разработка часто поднимает несколько dev-серверов параллельно
     // (разные чаты/вкладки) — Vite занимает первый свободный порт, если 3000
     // уже занят. Паттерн ограничен localhost, поэтому продовые origin'ы не затронуты.
-    'allowed_origins_patterns' => ['#^https?://localhost:\d+$#'],
+    // Только локально: фронт, открытый с телефона через cloudflared quick
+    // tunnel (адрес *.trycloudflare.com меняется при каждом перезапуске)
+    'allowed_origins_patterns' => array_values(array_filter([
+        '#^https?://localhost:\d+$#',
+        env('APP_ENV') === 'local' ? '#^https://[a-z0-9-]+\.trycloudflare\.com$#' : null,
+    ])),
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
     // Кэш preflight в браузере: без него каждый запрос к API

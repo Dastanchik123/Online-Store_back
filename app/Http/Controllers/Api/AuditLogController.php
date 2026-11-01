@@ -26,6 +26,6 @@ class AuditLogController extends Controller
             $query->whereDate('created_at', '<=', $request->date_to);
         }
 
-        return response()->json($query->paginate($request->get('per_page', 30)));
+        return response()->json($query->paginate(min(max((int) $request->get('per_page', 30), 1), 200)));
     }
 }

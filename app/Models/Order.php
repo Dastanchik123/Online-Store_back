@@ -12,6 +12,12 @@ class Order extends Model
 {
     use HasFactory, HasUuid, SoftDeletes;
 
+    // Канал продажи (колонка channel)
+    public const CHANNEL_ONLINE       = 'online';
+    public const CHANNEL_POS          = 'pos';
+    public const CHANNEL_SELF_SERVICE = 'self_service';
+    public const CHANNELS             = [self::CHANNEL_ONLINE, self::CHANNEL_POS, self::CHANNEL_SELF_SERVICE];
+
     protected $fillable = [
         'uuid',
         'order_number',
@@ -28,12 +34,17 @@ class Order extends Model
         'tax',
         'shipping_cost',
         'discount',
+        'manual_discount',
+        'coupon_id',
         'total',
         'currency',
         'notes',
         'is_financed',
         'cash_received',
         'transfer_received',
+        'change_amount',
+        'is_debt',
+        'debt_due_date',
         'staff_id',
         'shipped_at',
         'delivered_at',
@@ -43,8 +54,11 @@ class Order extends Model
         'subtotal'      => 'decimal:2',
         'tax'           => 'decimal:2',
         'shipping_cost' => 'decimal:2',
-        'discount'      => 'decimal:2',
-        'total'         => 'decimal:2',
+        'discount'        => 'decimal:2',
+        'manual_discount' => 'decimal:2',
+        'total'           => 'decimal:2',
+        'is_debt'         => 'boolean',
+        'debt_due_date'   => 'date:Y-m-d',
         'shipped_at'    => 'datetime',
         'delivered_at'  => 'datetime',
     ];
@@ -57,6 +71,9 @@ class Order extends Model
         static::creating(function ($order) {
             if (empty($order->order_number)) {
                 $order->order_number = 'ORD-' . strtoupper(Str::random(10));
+            }
+            if (empty($order->channel)) {
+                $order->channel = self::CHANNEL_ONLINE;
             }
         });
     }
@@ -97,9 +114,28 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    // Оплаты самого заказа. QR-погашения долга по заказу сюда не входят: они
+    // не должны влиять на статус оплаты заказа, отмену его QR и т.п.
     public function payments()
     {
-        return $this->hasMany(Payment::class);
+        return $this->hasMany(Payment::class)->whereNull('customer_debt_id');
+    }
+
+    // Способы оплаты, которые ставит только банк (QR GoPay), не сотрудник
+    public const BANK_PAYMENT_METHODS = ['mbank', 'qr', 'mixed'];
+
+    // Оплату подтвердил банк (QR GoPay): деньги пришли на счёт, поэтому
+    // статус и способ оплаты вручную не меняются — иначе учёт разойдётся с
+    // выпиской. Отмена/возврат по-прежнему возможны (деньги — наличными).
+    public function isPaidByBank(): bool
+    {
+        return self::whereBankConfirmed($this->payments())->exists();
+    }
+
+    // Подтверждённый банком QR-платёж (ручной платёж сотрудника — не банк)
+    public static function whereBankConfirmed($paymentsQuery)
+    {
+        return $paymentsQuery->where('status', 'completed')->whereIn('payment_method', Payment::BANK_METHODS);
     }
 
     public function reviews()
@@ -120,10 +156,12 @@ class Order extends Model
         $hasRefunded     = $this->payments()->where('status', 'refunded')->exists();
         $hasFailedOnly   = ! $hasRefunded && $completedTotal <= 0 && $this->payments()->where('status', 'failed')->exists();
 
-        if ($hasRefunded) {
-            $status = 'refunded';
-        } elseif ($completedTotal > 0 && $completedTotal >= (float) $this->total) {
+        // Сначала «оплачен»: возврат лишнего (двойного) QR-платежа помечает
+        // этот платёж refunded, но заказ при этом остаётся оплаченным
+        if ($completedTotal > 0 && $completedTotal >= (float) $this->total) {
             $status = 'paid';
+        } elseif ($hasRefunded) {
+            $status = 'refunded';
         } elseif ($hasFailedOnly) {
             $status = 'failed';
         } else {

@@ -17,13 +17,15 @@ class ReviewController extends Controller
         // здесь недоступен, поэтому не пытаемся различать "своё"/staff, а просто
         // отдаём только одобренные отзывы по товару (единственный реальный кейс
         // использования — фронт не вызывает ни user_id, ни is_approved).
-        $query = Review::query()->with('user', 'product')->where('is_approved', true);
+        // От автора — только имя: полная модель User отдавала бы email/телефон
+        // каждого, кто оставил отзыв, любому гостю.
+        $query = Review::query()->with('user:id,name', 'product')->where('is_approved', true);
 
         if ($request->has('product_id')) {
             $query->where('product_id', $request->product_id);
         }
 
-        $perPage = $request->get('per_page', 15);
+        $perPage = min(max((int) $request->get('per_page', 15), 1), 100);
         $reviews = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($reviews);
@@ -75,7 +77,12 @@ class ReviewController extends Controller
     
     public function show(Review $review)
     {
-        $review->load('user', 'product', 'order');
+        // Публичный роут: неодобренные отзывы и заказ автора не показываем
+        if (! $review->is_approved) {
+            abort(404);
+        }
+
+        $review->load('user:id,name', 'product');
         return response()->json($review);
     }
 
@@ -117,6 +124,12 @@ class ReviewController extends Controller
     
     public function approve(Review $review)
     {
+        // Модерация отзывов — часть карточки товара: то же право, что на её
+        // редактирование (есть у менеджера/закупщика, нет у кассира)
+        if (! Auth::user()->hasPermission('products.edit')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: products.edit'], 403);
+        }
+
         $review->update(['is_approved' => true]);
         return response()->json(['message' => 'Review approved', 'review' => $review]);
     }

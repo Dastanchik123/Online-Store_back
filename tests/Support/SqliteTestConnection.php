@@ -6,7 +6,7 @@ use Illuminate\Database\SQLiteConnection;
 
 /**
  * Только для тестов (sqlite in-memory, см. phpunit.xml). Часть бизнес-кода
- * (PosController::store, SyncController::push) использует Postgres-специфичный
+ * (PosController::store, SelfServiceOrderService) использует Postgres-специфичный
  * оконный SQL-синтаксис "SUBSTRING(col FROM 'pattern')" для извлечения числового
  * суффикса из order_number (например "k1-123" -> 123). Это валидный синтаксис
  * ANSI SQL/Postgres, но sqlite не поддерживает саму грамматику "FROM" внутри

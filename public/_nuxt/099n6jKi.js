@@ -1,0 +1,1 @@
+import{a0 as a,o as t,c as o,ag as s}from"./B6-a5nvy.js";const c={},n={class:"auth-layout"};function r(e,d){return t(),o("div",n,[s(e.$slots,"default",{},void 0)])}const f=a(c,[["render",r],["__scopeId","data-v-2824d9af"]]);export{f as default};

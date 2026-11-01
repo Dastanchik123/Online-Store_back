@@ -40,5 +40,13 @@ EXPOSE 8080
 # этого ReportExportController::store() сам запускает разовый
 # `queue:work --stop-when-empty` при постановке job в очередь — воркер
 # обрабатывает задачу и завершается, БД не трогается в простое.
+#
+# Планировщик (app/Console/Kernel.php: отмена брошенных QR-заказов и
+# страховка очереди) — schedule:work в фоне того же контейнера, от www-data,
+# иначе файлы кэша/блокировок создаются от root и php-fpm не может в них
+# писать. Задачи запускаются не чаще раза в 15 минут, чтобы Neon засыпал.
+# Цикл перезапускает планировщик, если тот упадёт.
 CMD chown -R www-data:www-data /var/www/html/storage && \
-    php-fpm -D && nginx -g "daemon off;"
+    php-fpm -D && \
+    (while true; do runuser -u www-data -- php /var/www/html/artisan schedule:work; sleep 10; done &) && \
+    nginx -g "daemon off;"

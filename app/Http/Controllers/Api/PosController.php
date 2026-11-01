@@ -1,14 +1,14 @@
 <?php
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\OrderStateException;
+use App\Exceptions\PaymentProviderUnavailableException;
 use App\Http\Controllers\Controller;
 use App\Models\Cart;
-use App\Models\CustomerDebt;
 use App\Models\FinancialTransaction;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Product;
-use App\Services\WeightedBarcodeService;
+use App\Services\Pos\PosSaleService;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 class PosController extends Controller
 {
+    public function __construct(private PosSaleService $sales)
+    {
+    }
+
     public function summary(Request $request)
     {
         $today   = now()->startOfDay();
@@ -29,58 +33,47 @@ class PosController extends Controller
 
         $cashQuery = FinancialTransaction::where('type', 'income')
             ->whereDate('created_at', $today)
-            ->where('category', 'like', '%POS - Наличными%');
+            ->where('category', PosSaleService::CATEGORY_CASH);
 
-        $transferQuery = FinancialTransaction::where('type', 'income')
+        // QR GoPay; «Перевод» — старые продажи до перехода на QR
+        $qrQuery = FinancialTransaction::where('type', 'income')
             ->whereDate('created_at', $today)
-            ->where('category', 'like', '%POS - Перевод%');
+            ->where(function ($q) {
+                $q->where('category', PosSaleService::CATEGORY_QR)
+                    ->orWhere('category', 'like', '%POS - Перевод%');
+            });
 
         if ($staffId) {
             $cashQuery->whereHasMorph('trackable', [Order::class], function ($q) use ($staffId) {
                 $q->where('staff_id', $staffId);
             });
-            $transferQuery->whereHasMorph('trackable', [Order::class], function ($q) use ($staffId) {
+            $qrQuery->whereHasMorph('trackable', [Order::class], function ($q) use ($staffId) {
                 $q->where('staff_id', $staffId);
             });
         }
 
-        $cashConfirmed     = $cashQuery->sum('amount');
-        $transferConfirmed = $transferQuery->sum('amount');
-
-        $pendingCashQuery = Order::whereDate('created_at', $today)
-            ->where('notes', 'like', '%POS%')
-            ->where('is_financed', false);
-
-        $pendingTransferQuery = Order::whereDate('created_at', $today)
-            ->where('notes', 'like', '%POS%')
-            ->where('is_financed', false);
+        $cashConfirmed = (float) $cashQuery->sum('amount');
+        $qrConfirmed   = (float) $qrQuery->sum('amount');
 
         $salesCountQuery = Order::whereDate('created_at', $today)
-            ->where('notes', 'like', '%POS%');
+            ->where('channel', Order::CHANNEL_POS)
+            ->whereNotIn('status', ['cancelled']);
 
         if ($staffId) {
-            $pendingCashQuery->where('staff_id', $staffId);
-            $pendingTransferQuery->where('staff_id', $staffId);
             $salesCountQuery->where('staff_id', $staffId);
         }
 
-        $pendingCash     = $pendingCashQuery->sum('cash_received');
-        $pendingTransfer = $pendingTransferQuery->sum('transfer_received');
-        $salesCount      = $salesCountQuery->count();
-
         return response()->json([
-            'cash_total'       => (float) $cashConfirmed,
-            'transfer_total'   => (float) $transferConfirmed,
-            'total'            => (float) ($cashConfirmed + $transferConfirmed),
-            'pending_cash'     => (float) $pendingCash,
-            'pending_transfer' => (float) $pendingTransfer,
-            'sales_count'      => $salesCount,
+            'cash_total'  => $cashConfirmed,
+            'qr_total'    => $qrConfirmed,
+            'total'       => $cashConfirmed + $qrConfirmed,
+            'sales_count' => $salesCountQuery->count(),
         ]);
     }
 
-    public function store(Request $request, WeightedBarcodeService $weightedBarcodeService)
+    public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'items'              => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity'   => 'required|numeric|min:0.001',
@@ -89,252 +82,98 @@ class PosController extends Controller
             'items.*.barcode'    => 'nullable|string|max:32',
             'user_id'            => 'nullable|exists:users,id',
             'cash_amount'        => 'required|numeric|min:0',
-            'transfer_amount'    => 'required|numeric|min:0',
+            // QR-часть смешанной оплаты (GoPay). Ручной «перевод» больше не
+            // принимается — его нельзя проверить.
+            'qr_amount'          => 'nullable|numeric|min:0',
             'is_debt'            => 'boolean',
             'due_date'           => 'nullable|date|after:today',
-            'discount'           => 'nullable|numeric|min:0',
+            // Скидку касса не присылает готовой суммой: купон сервер
+            // пересчитывает сам по коду, ручная скидка проверяется по правам.
+            'coupon_code'        => 'nullable|string|max:64',
+            'manual_discount'    => 'nullable|numeric|min:0',
         ]);
 
-        return DB::transaction(function () use ($request, $weightedBarcodeService) {
-            $items = $request->items;
+        if ((float) $request->input('transfer_amount', 0) > 0) {
+            return response()->json([
+                'message' => 'Оплата переводом больше не принимается — используйте QR. Обновите страницу кассы.',
+            ], 422);
+        }
 
-            // Весовой товар: цена и вес с фронта не доверяются — сервер сам
-            // декодирует штрихкод (product_id + вес) и подставляет актуальную
-            // каталожную цену, игнорируя $itemData['price'] с кассы.
-            foreach ($items as $key => $itemData) {
-                $product = Product::find($itemData['product_id']);
-                if (! $product || ! $product->is_weighted || empty($itemData['barcode'])) {
-                    continue;
-                }
+        try {
+            $result = $this->sales->create($validated, $request->user());
+        } catch (PaymentProviderUnavailableException $e) {
+            return response()->json(['message' => $e->getMessage()], 503);
+        }
 
-                $parsed = $weightedBarcodeService->parse($itemData['barcode']);
-                if ($parsed === null) {
-                    throw new \Exception("Некорректный весовой штрихкод для товара '{$product->name}'");
-                }
-                if ($parsed['product_id'] !== $product->id) {
-                    throw new \Exception("Штрихкод не соответствует товару '{$product->name}'");
-                }
-
-                $scannedWeight = $parsed['weight_kg'];
-                if ($product->min_weight !== null && $scannedWeight < (float) $product->min_weight) {
-                    throw new \Exception("Вес товара '{$product->name}' меньше допустимого минимума ({$product->min_weight} {$product->unit})");
-                }
-                if ($product->max_weight !== null && $scannedWeight > (float) $product->max_weight) {
-                    throw new \Exception("Вес товара '{$product->name}' превышает допустимый максимум ({$product->max_weight} {$product->unit})");
-                }
-
-                $items[$key]['price'] = (float) ($product->sale_price ?? $product->price);
-            }
-
-            $totalPaid   = $request->cash_amount + $request->transfer_amount;
-            $totalAmount = 0;
-            foreach ($items as $item) {
-                $totalAmount += $item['price'] * $item['quantity'];
-            }
-
-            $allowPriceChange = \App\Models\Setting::where('key', 'pos_allow_price_change')->value('value');
-            foreach ($items as $itemData) {
-                $product   = \App\Models\Product::find($itemData['product_id']);
-                $isPackage = (bool) ($itemData['is_package'] ?? false);
-                if ($product) {
-                    if ($isPackage && $product->package_price !== null) {
-                        $originalPrice = $product->package_price;
-                        $costPrice     = (float) ($product->purchase_price ?? 0) * (float) ($product->package_size ?? 1);
-                    } else {
-                        $originalPrice = $product->sale_price ?? $product->price;
-                        $costPrice     = (float) ($product->purchase_price ?? 0);
-                    }
-                    $sellingPrice  = (float) $itemData['price'];
-
-                    if (($allowPriceChange === '0' || $allowPriceChange === 'false') && abs($sellingPrice - $originalPrice) > 0.01) {
-                        throw new \Exception("Изменение цены запрещено настройками системы для товара: {$product->name}");
-                    }
-
-                    if ($sellingPrice < $costPrice) {
-                        throw new \Exception("Цена товара '{$product->name}' ({$sellingPrice} сом) ниже себестоимости ({$costPrice} сом). Продажа невозможна.");
-                    }
-                }
-            }
-
-            $terminalPrefix = $request->get('terminal_id', 'k1'); // По умолчанию k1, если не передано
-
-            $lastPosOrder = Order::where('order_number', 'like', "{$terminalPrefix}-%")
-                ->orderByRaw('CAST(SUBSTRING(order_number FROM \'[0-9]+$\') AS INTEGER) DESC')
-                ->first();
-
-            if (! $lastPosOrder) {
-                // Если нет заказов с префиксом, пробуем найти просто последний числовой POS заказ
-                $lastPosOrder = Order::where('notes', 'like', '%POS%')
-                    ->whereRaw('order_number ~ \'^[0-9]+$\'')
-                    ->orderByRaw('CAST(order_number AS INTEGER) DESC')
-                    ->first();
-                $nextNumber = $lastPosOrder ? (int) $lastPosOrder->order_number + 1 : 1;
-            } else {
-                // Извлекаем числовую часть из k1-123
-                preg_match('/-(\d+)$/', $lastPosOrder->order_number, $matches);
-                $nextNumber = isset($matches[1]) ? (int) $matches[1] + 1 : 1;
-            }
-
-            $orderNumber = "{$terminalPrefix}-{$nextNumber}";
-
-            $orderTotal  = $totalAmount - ($request->discount ?? 0);
-            $rawCash     = (float) $request->cash_amount;
-            $rawTransfer = (float) $request->transfer_amount;
-
-            $storeTransfer = min($rawTransfer, $orderTotal);
-            $storeCash     = min($rawCash, max(0, $orderTotal - $storeTransfer));
-
-            $order = Order::create([
-                'order_number'      => $orderNumber,
-                'user_id'           => $request->user_id,
-                'staff_id'          => auth()->id(),
-                'subtotal'          => $totalAmount,
-                'discount'          => $request->discount ?? 0,
-                'total'             => $orderTotal,
-                'status'            => 'delivered',
-                'payment_status'    => ($request->is_debt && $totalPaid < $orderTotal) ? 'pending' : 'paid',
-                'payment_method'    => $rawTransfer > 0 ? ($rawCash > 0 ? 'mixed' : 'card') : 'cash',
-                'currency'          => 'SOM',
-                'notes'             => "Оффлайн продажа (POS - {$terminalPrefix})",
-                'is_financed'       => true,
-                'cash_received'     => $storeCash,
-                'transfer_received' => $storeTransfer,
-            ]);
-
-            foreach ($items as $itemData) {
-                $product   = Product::find($itemData['product_id']);
-                $isPackage = (bool) ($itemData['is_package'] ?? false);
-                $baseQty   = ($isPackage && $product && $product->package_size)
-                    ? $itemData['quantity'] * (float) $product->package_size
-                    : $itemData['quantity'];
-
-                OrderItem::create([
-                    'order_id'       => $order->id,
-                    'product_id'     => $product->id,
-                    'product_name'   => $product->name,
-                    'product_sku'    => $product->sku,
-                    'purchase_price' => $product->purchase_price,
-                    'quantity'       => $itemData['quantity'],
-                    'unit'           => $product->unit ?: 'шт',
-                    'is_package'     => $isPackage,
-                    'price'          => $itemData['price'],
-                    'total'          => $itemData['price'] * $itemData['quantity'],
-                ]);
-
-                $product->decrement('stock_quantity', $baseQty);
-                $product->increment('sales_count', $baseQty);
-                $product->update(['in_stock' => $product->stock_quantity > 0]);
-            }
-
-            $orderTotal       = $order->total;
-            $cashReceived     = (float) $request->cash_amount;
-            $transferReceived = (float) $request->transfer_amount;
-
-            $transferIncome = min($transferReceived, $orderTotal);
-            $cashIncome     = min($cashReceived, max(0, $orderTotal - $transferIncome));
-
-            if ($cashIncome > 0) {
-                FinancialTransaction::create([
-                    'user_id'     => auth()->id(),
-                    'type'        => 'income',
-                    'amount'      => $cashIncome,
-                    'category'    => 'Продажа товаров (POS - Наличными)',
-                    'description' => "Оплата заказа POS #{$order->order_number} (Наличные)",
-                    'trackable_type' => Order::class,
-                    'trackable_id'   => $order->id,
-                    'payment_method' => 'cash',
-                ]);
-            }
-
-            if ($transferIncome > 0) {
-                FinancialTransaction::create([
-                    'user_id'     => auth()->id(),
-                    'type'        => 'income',
-                    'amount'      => $transferIncome,
-                    'category'    => 'Продажа товаров (POS - Перевод)',
-                    'description' => "Оплата заказа POS #{$order->order_number} (Перевод)",
-                    'trackable_type' => Order::class,
-                    'trackable_id'   => $order->id,
-                    'payment_method' => 'card',
-                ]);
-            }
-
-            if ($request->is_debt && $request->user_id) {
-
-                $allowDebt = \App\Models\Setting::where('key', 'pos_allow_debt')->value('value');
-                if ($allowDebt === 'false' || $allowDebt === '0') {
-                    throw new \Exception("Продажа в долг запрещена настройками системы");
-                }
-
-                $debtAmount = $totalAmount - $totalPaid;
-                if ($debtAmount > 0) {
-                    CustomerDebt::create([
-                        'user_id'          => $request->user_id,
-                        'order_id'         => $order->id,
-                        'total_amount'     => $totalAmount,
-                        'paid_amount'      => $totalPaid,
-                        'remaining_amount' => $debtAmount,
-                        'due_date'         => $request->due_date,
-                        'status'           => 'active',
-                    ]);
-                }
-            }
-
-            $order->load(['items.product', 'user']);
-            return response()->json($order, 201);
-        });
+        return response()->json($this->presentSale($result['order'], $result['payment']), 201);
     }
 
-    public function confirmFinance(Request $request, $id)
+    // Экран ожидания QR: опрос состояния; ?check=1 — спросить и провайдера
+    public function saleStatus(Request $request, Order $order)
     {
-        $order = Order::findOrFail($id);
+        $this->authorizeSale($request, $order);
 
-        if ($order->staff_id && $order->staff_id !== $request->user()->id && !$request->user()->hasPermission('reports.view')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        $order = $this->sales->status($order, $request->boolean('check'));
+
+        return response()->json($this->presentSale($order, $order->payments->whereIn('status', ['pending', 'processing'])->last()));
+    }
+
+    public function cancelSale(Request $request, Order $order)
+    {
+        $this->authorizeSale($request, $order);
+
+        if ($order->status !== 'pending') {
+            return response()->json(['message' => 'Продажа уже не ожидает оплаты.'], 409);
         }
 
-        if ($order->is_financed) {
-            return response()->json(['message' => 'Финансы уже подтверждены'], 400);
+        try {
+            $order = $this->sales->cancelPending($order);
+        } catch (OrderStateException $e) {
+            return response()->json(['message' => $e->getMessage(), 'order' => $this->presentSale($order->fresh(['items.product', 'user']), null)], 409);
+        } catch (PaymentProviderUnavailableException $e) {
+            return response()->json(['message' => $e->getMessage()], 503);
         }
 
-        return DB::transaction(function () use ($order) {
-            $orderTotal       = $order->total;
-            $cashReceived     = (float) $order->cash_received;
-            $transferReceived = (float) $order->transfer_received;
+        return response()->json($this->presentSale($order->load(['items.product', 'user']), null));
+    }
 
-            $transferIncome = min($transferReceived, $orderTotal);
-            $cashIncome     = min($cashReceived, max(0, $orderTotal - $transferIncome));
+    public function regenerateSaleQr(Request $request, Order $order)
+    {
+        $this->authorizeSale($request, $order);
 
-            if ($cashIncome > 0) {
-                FinancialTransaction::create([
-                    'user_id'     => auth()->id(),
-                    'type'        => 'income',
-                    'amount'      => $cashIncome,
-                    'category'    => 'Продажа товаров (POS - Наличными)',
-                    'description' => "Оплата заказа POS #{$order->id} (Наличные) - Подтверждено",
-                    'trackable_type' => Order::class,
-                    'trackable_id'   => $order->id,
-                    'payment_method' => 'cash',
-                ]);
-            }
+        try {
+            $payment = $this->sales->regenerateQr($order);
+        } catch (OrderStateException $e) {
+            return response()->json(['message' => $e->getMessage(), 'order' => $this->presentSale($order->fresh(['items.product', 'user']), null)], 409);
+        } catch (PaymentProviderUnavailableException $e) {
+            return response()->json(['message' => $e->getMessage()], 503);
+        }
 
-            if ($transferIncome > 0) {
-                FinancialTransaction::create([
-                    'user_id'     => auth()->id(),
-                    'type'        => 'income',
-                    'amount'      => $transferIncome,
-                    'category'    => 'Продажа товаров (POS - Перевод)',
-                    'description' => "Оплата заказа POS #{$order->id} (Перевод) - Подтверждено",
-                    'trackable_type' => Order::class,
-                    'trackable_id'   => $order->id,
-                    'payment_method' => 'card',
-                ]);
-            }
+        return response()->json($this->presentSale($order->fresh(['items.product', 'user']), $payment));
+    }
 
-            $order->update(['is_financed' => true]);
+    // Заказ кассы + данные QR для экрана оплаты (qr_value, expires_at)
+    private function presentSale(Order $order, $payment): array
+    {
+        $data = $order->toArray();
+        $data['awaiting_payment'] = $order->status === 'pending';
+        $data['qr_payment'] = $payment
+            ? array_merge(
+                json_decode((string) $payment->payment_details, true) ?: [],
+                ['id' => $payment->id, 'amount' => (float) $payment->amount]
+            )
+            : null;
 
-            return response()->json(['message' => 'Данные успешно внесены в финансовый отчет']);
-        });
+        return $data;
+    }
+
+    // Продажа кассы — её кассир или персонал с правом на заказы
+    private function authorizeSale(Request $request, Order $order): void
+    {
+        $user = $request->user();
+
+        abort_if($order->channel !== Order::CHANNEL_POS, 404);
+        abort_if($order->staff_id !== $user->id && ! $user->hasPermission('orders.edit'), 403);
     }
 
     public function searchProducts(Request $request)
@@ -388,8 +227,80 @@ class PosController extends Controller
 
     public function getStaff()
     {
-        $staff = \App\Models\User::whereIn('role', ['admin', 'purchaser', 'cashier'])->get(['id', 'name', 'role']);
+        // Персонал — любая роль, кроме покупателя (как в middleware IsStaff):
+        // роли динамические, новые не должны выпадать из списка
+        $staff = \App\Models\User::where('role', '!=', 'user')->get(['id', 'name', 'role']);
         return response()->json($staff);
+    }
+
+    // Поиск покупателя для продажи в долг. Кассир не имеет доступа к /users
+    // (только superadmin), поэтому отдаём здесь лишь поля, нужные кассе.
+    public function searchCustomers(Request $request)
+    {
+        $search = trim((string) $request->get('search'));
+        if (mb_strlen($search) < 2) {
+            return response()->json(['data' => []]);
+        }
+
+        $like = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        // Номер хранится как +996XXXXXXXXX, а кассир вводит как привык:
+        // «0555 12 34», «555-123» — ищем по цифрам без ведущего 0/996
+        $digits = preg_replace('/^(996|0)/', '', preg_replace('/\D+/', '', $search));
+
+        $customers = \App\Models\User::where('role', 'user')
+            ->where(function ($q) use ($search, $like, $digits) {
+                $q->where('name', $like, "%{$search}%")
+                    ->orWhere('email', $like, "%{$search}%")
+                    ->orWhere('phone', $like, "%{$search}%");
+                if (strlen($digits) >= 3) {
+                    $q->orWhere('phone', 'like', "%{$digits}%");
+                }
+            })
+            ->orderBy('name')
+            ->limit(20)
+            ->get(['id', 'uuid', 'name', 'phone', 'email']);
+
+        return response()->json(['data' => $customers]);
+    }
+
+    // Новый покупатель с кассы: имя и номер. Он сразу может войти на сайт по
+    // этому номеру через SMS и увидит свои покупки и долги. Если номер уже
+    // есть — возвращается существующий клиент (кассир не создаст дубль).
+    public function createCustomer(Request $request)
+    {
+        $validated = $request->validate([
+            'name'  => 'required|string|max:255',
+            'phone' => 'required|string|max:32',
+        ]);
+
+        $phone = \App\Support\Phone::normalize($validated['phone']);
+        if ($phone === null) {
+            return response()->json([
+                'message' => 'Введите номер полностью: 9 цифр после +996.',
+                'errors'  => ['phone' => ['Введите номер полностью: 9 цифр после +996.']],
+            ], 422);
+        }
+
+        $existing = \App\Models\User::withTrashed()->where('phone', $phone)->first();
+        if ($existing) {
+            if ($existing->trashed() || $existing->role !== 'user') {
+                return response()->json([
+                    'message' => 'Этот номер уже занят и не может быть клиентом.',
+                    'errors'  => ['phone' => ['Этот номер уже занят и не может быть клиентом.']],
+                ], 422);
+            }
+
+            return response()->json(['customer' => $existing->only(['id', 'uuid', 'name', 'phone', 'email']), 'existing' => true]);
+        }
+
+        $customer = \App\Models\User::create([
+            'name'     => trim($validated['name']),
+            'phone'    => $phone,
+            'role'     => 'user',
+            'password' => \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(40)),
+        ]);
+
+        return response()->json(['customer' => $customer->only(['id', 'uuid', 'name', 'phone', 'email']), 'existing' => false], 201);
     }
 
     // Покупатель собрал корзину сканером на /tsd и получил QR (см.

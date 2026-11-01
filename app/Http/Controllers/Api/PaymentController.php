@@ -17,7 +17,9 @@ class PaymentController extends Controller
         $user = Auth::user();
         $query = Payment::query()->with('order');
 
-        if ($user) {
+        // Покупатель видит только платежи по своим заказам, персонал с
+        // orders.view — все (раньше и админ видел лишь свои)
+        if (! $user->hasPermission('orders.view')) {
             $query->whereHas('order', function($q) use ($user) {
                 $q->where('user_id', $user->id);
             });
@@ -31,7 +33,7 @@ class PaymentController extends Controller
             $query->where('status', $request->status);
         }
 
-        $perPage = $request->get('per_page', 15);
+        $perPage = min(max((int) $request->get('per_page', 15), 1), 200);
         $payments = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($payments);
@@ -51,14 +53,21 @@ class PaymentController extends Controller
 
         $order = Order::findOrFail($validated['order_id']);
 
-        
-        $user = Auth::user();
-        if ($user && $order->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Платёж сразу проводится как completed, поэтому вручную его может
+        // зарегистрировать только персонал. Покупатель платит через GoPay —
+        // оплату подтверждает подписанный вебхук, а не сам покупатель.
+        if (! Auth::user()->hasPermission('orders.edit')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: orders.edit'], 403);
         }
 
         if ($order->payment_status === 'paid') {
             return response()->json(['message' => 'Order is already paid'], 400);
+        }
+
+        // QR-платёж (GoPay) проводит только банк — вручную такой «платёж»
+        // выглядел бы как подтверждённая банком оплата без денег на счёте
+        if (in_array($validated['payment_method'], Payment::BANK_METHODS, true)) {
+            return response()->json(['message' => 'Оплату по QR отмечает банк автоматически — выберите другой способ оплаты.'], 422);
         }
 
         DB::beginTransaction();
@@ -68,7 +77,7 @@ class PaymentController extends Controller
                 'payment_method' => $validated['payment_method'],
                 'status' => 'processing',
                 'amount' => $validated['amount'],
-                'currency' => $validated['currency'] ?? 'USD',
+                'currency' => $validated['currency'] ?? ($order->currency ?: 'SOM'),
                 'transaction_id' => $validated['transaction_id'] ?? null,
                 'payment_details' => $validated['payment_details'] ?? null,
             ]);
@@ -93,7 +102,8 @@ class PaymentController extends Controller
             return response()->json($payment->load('order'), 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Payment processing failed: ' . $e->getMessage()], 500);
+            \Illuminate\Support\Facades\Log::error('Payment processing failed: ' . $e->getMessage(), ['order_id' => $order->id]);
+            return response()->json(['message' => 'Payment processing failed'], 500);
         }
     }
 
@@ -101,8 +111,8 @@ class PaymentController extends Controller
     public function show(Payment $payment)
     {
         $user = Auth::user();
-        
-        if ($user && $payment->order->user_id !== $user->id) {
+
+        if ($payment->order->user_id !== $user->id && ! $user->hasPermission('orders.view')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -113,10 +123,9 @@ class PaymentController extends Controller
     
     public function update(Request $request, Payment $payment)
     {
-        $user = Auth::user();
-        $isStaff = $user && in_array($user->role, ['admin', 'purchaser', 'cashier', 'manager']);
-        if ($user && !$isStaff && $payment->order->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Смена статуса платежа (вплоть до completed) — только персонал.
+        if (! Auth::user()->hasPermission('orders.edit')) {
+            return response()->json(['message' => 'Forbidden. Missing permission: orders.edit'], 403);
         }
 
         $validated = $request->validate([
@@ -124,6 +133,12 @@ class PaymentController extends Controller
             'transaction_id' => 'nullable|string|max:255',
             'payment_details' => 'nullable|string',
         ]);
+
+        // Статус QR-платежа (GoPay) знает только банк: вручную «completed»
+        // засчитал бы деньги, которых нет, а снятие подтверждённого — потерял бы их
+        if ($payment->isBankPayment()) {
+            return response()->json(['message' => 'Статус оплаты по QR меняет только банк.'], 422);
+        }
 
         DB::transaction(function () use ($validated, $payment) {
             if (($validated['status'] ?? null) === 'completed' && !$payment->paid_at) {

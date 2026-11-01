@@ -23,6 +23,18 @@ class Post extends Model
 
     protected $appends = ['image_url'];
 
+    // Очищается и при записи, и при чтении: старые статьи, сохранённые до
+    // появления очистки, тоже не должны отдавать фронту (v-html) скрипты.
+    public function setContentAttribute($value)
+    {
+        $this->attributes['content'] = \App\Support\HtmlSanitizer::clean($value);
+    }
+
+    public function getContentAttribute($value)
+    {
+        return \App\Support\HtmlSanitizer::clean($value);
+    }
+
     public function getImageUrlAttribute()
     {
         if ($this->image_path) {

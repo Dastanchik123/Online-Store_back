@@ -22,7 +22,8 @@ return [
 
     
 
-    'timezone' => 'UTC',
+    // Кыргызстан, UTC+6 (без перехода на летнее время)
+    'timezone' => env('APP_TIMEZONE', 'Asia/Bishkek'),
 
     
 

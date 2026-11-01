@@ -21,6 +21,7 @@ class UpdateCouponRequest extends FormRequest
             'type'             => 'sometimes|required|in:fixed,percent',
             'value'            => array_filter(['sometimes', 'required', 'numeric', 'min:0', $this->percentLimit($effectiveType)]),
             'min_order_amount' => 'nullable|numeric|min:0',
+            'usage_limit'      => 'nullable|integer|min:1',
             'is_active'        => 'boolean',
             'expires_at'       => 'nullable|date',
         ];

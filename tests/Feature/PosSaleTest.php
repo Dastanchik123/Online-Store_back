@@ -70,16 +70,15 @@ class PosSaleTest extends TestCase
 
         $response = $this->actingAs($cashier)->postJson('/api/pos/sales', [
             'items' => [
-                // цена продажи (10) ниже себестоимости (80) — контроллер бросает
-                // исключение "ниже себестоимости", запрос должен провалиться (500,
-                // т.к. контроллер не оборачивает \Exception в структурированный ответ)
+                // цена продажи (10) ниже себестоимости (80) — продажа
+                // отклоняется с понятным кассиру сообщением (422)
                 ['product_id' => $product->id, 'quantity' => 1, 'price' => 10],
             ],
             'cash_amount'     => 10,
             'transfer_amount' => 0,
         ]);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
 
         $product->refresh();
         $this->assertEquals(10, (float) $product->stock_quantity, 'Остаток не должен списываться при отклонённой продаже');
@@ -87,14 +86,14 @@ class PosSaleTest extends TestCase
     }
 
     /**
-     * ВНИМАНИЕ: в PosController::store нет проверки "quantity <= stock_quantity"
-     * перед decrement(). Это сделано намеренно (не баг): подтверждено
-     * пользователем — документируем текущее поведение, а не выдумываем
-     * защиту, которой не должно быть.
+     * Продажа больше, чем есть по учёту, — право роли pos.sell_negative_stock
+     * (товар физически на кассе, учёт расходится). С правом остаток уходит
+     * в минус, без права — продажа отклоняется.
      */
-    public function test_pos_sale_allows_overselling_beyond_stock_current_behavior()
+    public function test_pos_sale_allows_overselling_with_permission()
     {
         $cashier = $this->cashier();
+        RolePermission::create(['role' => 'cashier', 'permission' => 'pos.sell_negative_stock']);
         $product = Product::factory()->create([
             'stock_quantity' => 2,
             'price'          => 100,
@@ -111,7 +110,23 @@ class PosSaleTest extends TestCase
         $response->assertStatus(201);
 
         $product->refresh();
-        $this->assertEquals(-3, (float) $product->stock_quantity, 'Текущее поведение: остаток уходит в минус, проверки нет');
+        $this->assertEquals(-3, (float) $product->stock_quantity, 'С правом остаток уходит в минус');
+    }
+
+    public function test_pos_sale_beyond_stock_without_permission_is_rejected()
+    {
+        $cashier = $this->cashier();
+        $product = Product::factory()->create(['stock_quantity' => 2, 'price' => 100, 'sale_price' => null, 'purchase_price' => 0]);
+
+        $response = $this->actingAs($cashier)->postJson('/api/pos/sales', [
+            'items'           => [['product_id' => $product->id, 'quantity' => 5, 'price' => 100]],
+            'cash_amount'     => 500,
+            'transfer_amount' => 0,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertEquals(2, (float) $product->fresh()->stock_quantity);
+        $this->assertEquals(0, Order::count());
     }
 
     public function test_pos_sales_route_requires_pos_or_cashier_permission()

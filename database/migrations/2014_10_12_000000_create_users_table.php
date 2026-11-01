@@ -12,7 +12,10 @@ class CreateUsersTable extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('email')->unique();
+            // Необязателен: покупатели входят по номеру телефона. На уже
+            // развёрнутых Postgres-базах NOT NULL снимает миграция
+            // 2026_10_24_000001_phone_login (sqlite в тестах ALTER COLUMN не умеет)
+            $table->string('email')->nullable()->unique();
             $table->string('role')->default('user');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');

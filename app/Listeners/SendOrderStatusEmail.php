@@ -11,7 +11,7 @@ class SendOrderStatusEmail
     {
         // Событие шлётся при любом сохранении заказа (в т.ч. правка notes,
         // изменение payment_status без смены status — см. OrderController,
-        // PaymentController, SyncController) — письмо про "статус изменился"
+        // PaymentController) — письмо про "статус изменился"
         // нужно только когда status реально поменялся.
         if (! $event->order->wasChanged('status')) {
             return;

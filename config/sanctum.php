@@ -8,7 +8,9 @@ return [
         env('APP_URL') ? ',' . parse_url(env('APP_URL'), PHP_URL_HOST) : ''
     ))),
     'guard'      => ['web'],
-    'expiration' => null,
+    // Минуты жизни токена. Раньше null — украденный токен действовал вечно.
+    // 30 дней по умолчанию: касса может долго работать офлайн без перелогина.
+    'expiration' => (int) env('SANCTUM_EXPIRATION', 60 * 24 * 30) ?: null,
     'middleware' => [
         'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
         'encrypt_cookies'   => App\Http\Middleware\EncryptCookies::class,

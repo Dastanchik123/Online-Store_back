@@ -34,7 +34,7 @@ class ReturnController extends Controller
             });
         }
 
-        return $query->paginate($request->get('per_page', 15));
+        return $query->paginate(min(max((int) $request->get('per_page', 15), 1), 200));
     }
 
     
